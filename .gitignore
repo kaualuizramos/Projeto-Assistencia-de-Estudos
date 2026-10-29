@@ -204,6 +204,12 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Local user data and application logs (the database contains personal data)
+assistente_estudos.db
+assistente_estudos.db-shm
+assistente_estudos.db-wal
+estuda.log
+
 # Ruff stuff:
 .ruff_cache/
 
