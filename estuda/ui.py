@@ -16,7 +16,7 @@ from estuda.ai_chat import AIChatService, ChatError
 from estuda.authentication import AuthenticationError, AuthenticationService
 from estuda.database import Database
 from estuda.focus_sessions import FocusError, FocusSessionsService
-from estuda.integrations.ai import AIUnavailable, OpenAIResponsesClient
+from estuda.integrations.ai import AIUnavailable, create_ai_client
 from estuda.integrations.email import SMTPMailer
 from estuda.notifications import NotificationsService
 from estuda.tasks import TaskError, TasksService
@@ -74,7 +74,7 @@ class StudyWindow(tk.Tk):
         self.tasks = TasksService(database)
         self.focus = FocusSessionsService(database)
         self.notifications = NotificationsService(database)
-        self.ai_client = OpenAIResponsesClient()
+        self.ai_client = create_ai_client()
         self.mailer = SMTPMailer()
         self.chat = AIChatService(database, self.ai_client, self.auth, self.tasks)
         self.reset_server = ResetLinkServer()
@@ -657,7 +657,7 @@ class StudyWindow(tk.Tk):
         top.pack(fill="x")
         self._label(top, "Assistente de estudos", "Title.TLabel").pack(side="left")
         ttk.Button(top, text="+ Nova conversa", command=self._new_conversation).pack(side="right")
-        self._label(self.chat_page, "A conversa usa um provedor de IA externo quando OPENAI_API_KEY está configurada.", "Muted.TLabel").pack(anchor="w", pady=(3, 8))
+        self._label(self.chat_page, "Configure ESTUDA_AI_PROVIDER e a chave do provedor no ambiente para ativar a IA.", "Muted.TLabel").pack(anchor="w", pady=(3, 8))
         selector = ttk.Frame(self.chat_page)
         selector.pack(fill="x", pady=(0, 8))
         ttk.Label(selector, text="Conversa").pack(side="left", padx=(0, 6))

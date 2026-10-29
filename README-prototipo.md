@@ -23,10 +23,21 @@ Não há dependências Python adicionais: a aplicação usa a biblioteca padrão
 
 ## Integrações externas
 
-O restante do aplicativo continua funcionando sem as integrações. Sem credenciais, o chat informa que a IA está indisponível e mantém a mensagem com estado de falha. Para habilitar a integração Responses API:
+O restante do aplicativo continua funcionando sem as integrações. Sem credenciais, o chat informa que a IA está indisponível e mantém a mensagem com estado de falha. Para habilitar a IA, configure as variáveis no ambiente antes de iniciar o aplicativo. Não coloque chaves em arquivos Python, no banco de dados ou em commits.
 
-- Defina `OPENAI_API_KEY` no ambiente do sistema antes de iniciar o aplicativo.
+### Gemini (Google AI Studio)
+
+- Defina `ESTUDA_AI_PROVIDER=gemini`.
+- Defina `GEMINI_API_KEY` com a chave criada no Google AI Studio.
+- Opcionalmente, defina `ESTUDA_AI_MODEL` (padrão: `gemini-3.8-flash`).
+
+### OpenAI (Responses API)
+
+- Defina `ESTUDA_AI_PROVIDER=openai` e `OPENAI_API_KEY` para selecionar OpenAI explicitamente. Sem provedor definido, o app usa Gemini; quando `GEMINI_API_KEY` existir, ela prevalece sobre uma seleção OpenAI antiga sem chave OpenAI.
+- Defina `OPENAI_API_KEY` com sua chave da plataforma OpenAI.
 - Opcionalmente, defina `ESTUDA_AI_MODEL` (padrão: `gpt-4o-mini`).
+
+No PyCharm, abra **Run > Edit Configurations...**, selecione a configuração de `app.py` e adicione as variáveis em **Environment variables**. Exemplo Gemini: `ESTUDA_AI_PROVIDER=gemini;GEMINI_API_KEY=sua-chave`. Salve e reinicie o aplicativo. Cada provedor requer sua própria chave e limites/cobrança são definidos pelo fornecedor.
 
 Para e-mail, defina as variáveis de ambiente `ESTUDA_SMTP_HOST`, `ESTUDA_SMTP_PORT` (padrão 587), `ESTUDA_SMTP_USER`, `ESTUDA_SMTP_PASSWORD`, `ESTUDA_SMTP_FROM` e, quando o provedor exigir TLS implícito, `ESTUDA_SMTP_SSL=true`. O aplicativo exige STARTTLS ou TLS implícito para a conexão SMTP.
 
