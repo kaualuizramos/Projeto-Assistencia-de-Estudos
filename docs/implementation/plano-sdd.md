@@ -2,7 +2,7 @@
 
 ## Interpretação do escopo
 
-As especificações oficiais em `docs/specs/requisitos/` são a fonte de verdade e permanecem inalteradas. O produto é uma aplicação desktop local em Python/Tkinter, conforme a restrição explícita do projeto. Portanto, “FR 1–6” no pedido é tratado como os seis grupos funcionais RF dos documentos 01–06; os IDs oficiais individuais continuam sendo RF01–RF46. “NFR 7–12” corresponde aos documentos 07–12 e aos IDs RNF101–RNF126.
+As especificações oficiais em `docs/specs/requisitos/` são a fonte de verdade e permanecem inalteradas. O produto é uma aplicação desktop local em Python. Em 02/11/2026, a solicitação do usuário substituiu a GUI Tkinter por PySide6/Qt Widgets; não é uma aplicação web. Portanto, “FR 1–6” no pedido é tratado como os seis grupos funcionais RF dos documentos 01–06; os IDs oficiais individuais continuam sendo RF01–RF46. “NFR 7–12” corresponde aos documentos 07–12 e aos IDs RNF101–RNF126.
 
 Os RF que mencionam páginas, endpoints ou navegador são atendidos por telas e operações de serviço da aplicação desktop. RNF121 é adaptado para cinco módulos desktop com serviço e repositório próprios, sem rotas HTTP. RNF101–RNF103, RNF120 e RNF125 exigem endpoints web, navegador ou concorrência de servidor e não são propriedades verificáveis de um aplicativo desktop de usuário único; serão explicitamente reportados como incompatíveis com a plataforma definida, sem alterar os requisitos originais.
 
@@ -19,7 +19,7 @@ Integrações de IA e e-mail permanecem fora do processo visual e são isoladas 
 ## Plano
 
 1. Criar uma camada SQLite versionada e serviços para autenticação, tarefas/lembretes, chat/IA, sessões de foco e notificações.
-2. Manter `app.py` como ponto de entrada e fornecer GUI desktop integrada com dashboard, filtros e histórico.
+2. Manter `app.py` como ponto de entrada e fornecer GUI desktop PySide6 integrada com dashboard, filtros e histórico.
 3. Implementar adaptadores configuráveis de IA e SMTP, sem credenciais no código; manter o app útil quando os serviços externos não estiverem configurados.
 4. Adicionar testes `unittest` para regras críticas e migração em banco temporário, sem usar os dados locais.
 5. Atualizar o guia de execução e esta matriz com evidências dos testes e limitações da plataforma.
@@ -51,3 +51,11 @@ Integrações de IA e e-mail permanecem fora do processo visual e são isoladas 
 - Integrações reais de IA/e-mail não foram chamadas: não há credenciais configuradas. Os adaptadores são exercitados por doubles de teste; a configuração externa permanece necessária para uso real.
 - RNF101–RNF103, RNF120 e RNF125 não são aplicáveis à plataforma desktop exigida e continuam incompatíveis sem uma versão backend/web.
 - `docs/implementation/relatorio-verificacao.md` registra o status por grupo funcional e de NFR.
+
+## Atualização de interface — 02/11/2026
+
+- A GUI ativa foi migrada de Tkinter para PySide6/Qt Widgets a pedido do usuário. `app.py` continua sendo o ponto de entrada, e os serviços SQLite/regras de negócio foram preservados.
+- `requirements.txt` declara `PySide6-Essentials>=6.10.1,<7`; essa distribuição cobre Qt Widgets sem instalar os módulos adicionais não usados pelo app.
+- `app.py` e `estuda/ui.py` passaram por `py_compile`; a suíte de serviços foi executada novamente: 13 testes aprovados.
+- PySide6 Essentials 6.12 foi instalado no `.venv` local usando wheels oficiais verificadas. `app.py` inicializou sem erro e as telas de login, painel, tarefas, foco, chat, notificações, histórico e conta foram renderizadas para inspeção com banco SQLite em memória. A inspeção visual apontou e corrigiu o contraste do painel de login. Os 13 testes de serviços passaram após a migração. Ainda não foi realizado um ensaio manual completo dos fluxos autenticados; IA/SMTP reais também não foram testados sem credenciais.
+- Na melhoria da experiência do chat: indicador de provedor/chave sem expor segredo; botões de início rápido; indicador de envio e resposta; cartões de propostas e tentativas com falha recolhidos quando vazios; texto restaurado se a solicitação for rejeitada antes de ser persistida; erros específicos do provedor preservados ao reenviar. Smoke test Qt com banco em memória e IA simulada passou.

@@ -1,16 +1,25 @@
-"""Interface desktop Tkinter que apresenta os cinco serviços do domínio."""
+"""Interface desktop Estuda+ feita com Qt Widgets (PySide6)."""
 
 from __future__ import annotations
 
+import html
 import logging
 import queue
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from tkinter import messagebox, simpledialog, ttk
-import tkinter as tk
 from urllib.parse import unquote
+
+from PySide6.QtCore import QDateTime, QEvent, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QApplication, QCheckBox, QComboBox, QDateTimeEdit, QDialog, QFormLayout,
+    QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
+    QPushButton, QSpinBox, QStackedWidget, QTabWidget, QTableWidget,
+    QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
+)
 
 from estuda.ai_chat import AIChatService, ChatError
 from estuda.authentication import AuthenticationError, AuthenticationService
@@ -22,15 +31,71 @@ from estuda.notifications import NotificationsService
 from estuda.tasks import TaskError, TasksService
 
 logger = logging.getLogger(__name__)
-BG = "#f3f5fa"
-INK = "#1c2435"
-MUTED = "#647087"
-ACCENT = "#5146e5"
-WHITE = "#ffffff"
+
+COLORS = {
+    "canvas": "#F4F6F4", "surface": "#FFFFFF", "ink": "#172B27",
+    "muted": "#71817C", "line": "#E3EAE6", "brand": "#2C766A",
+    "brand_hover": "#236458", "sidebar": "#173D36", "sidebar_active": "#28574E",
+    "mint": "#E4F2EC", "lime": "#C8E6A0", "red": "#B84B54",
+}
+
+APP_STYLE = """
+QWidget { background: #F4F6F4; color: #172B27; font-family: 'Segoe UI'; font-size: 10pt; }
+QLabel { background: transparent; }
+QMainWindow { background: #F4F6F4; }
+QLabel[role='title'] { font-size: 23pt; font-weight: 700; color: #172B27; }
+QLabel[role='heading'] { font-size: 14pt; font-weight: 650; color: #172B27; }
+QLabel[role='subtitle'] { color: #71817C; font-size: 10pt; }
+QLabel[role='chatReady'] { color: #246B50; background: #E4F2EC; border-radius: 9px; padding: 8px 12px; font-weight: 650; }
+QLabel[role='chatWarning'] { color: #805A19; background: #FFF4D9; border-radius: 9px; padding: 8px 12px; font-weight: 650; }
+QLabel[role='chatError'] { color: #9D343C; background: #FFF0F0; border-radius: 9px; padding: 8px 12px; }
+QLabel[role='metric'] { font-size: 23pt; font-weight: 700; color: #173D36; }
+QLabel[role='eyebrow'] { color: #71817C; font-size: 9pt; font-weight: 650; letter-spacing: 1px; }
+QLabel[role='whiteTitle'] { color: white; font-size: 16pt; font-weight: 700; }
+QLabel[role='heroTitle'] { color: white; font-size: 28pt; font-weight: 750; }
+QLabel[role='heroText'] { color: #D4E5DF; font-size: 11pt; }
+QFrame#hero QLabel[role='eyebrow'], QFrame#sidebar QLabel[role='eyebrow'] { color: #C9D9D4; }
+QFrame#card, QFrame#authCard { background: #FFFFFF; border: 1px solid #E3EAE6; border-radius: 16px; }
+QFrame#sidebar { background: #173D36; border: none; }
+QFrame#hero { background: #173D36; border-radius: 20px; }
+QFrame#heroAccent { background: #28574E; border-radius: 16px; }
+QFrame#topbar { background: #FFFFFF; border: none; border-bottom: 1px solid #E3EAE6; }
+QLabel#brandMark { color: #173D36; background: #C8E6A0; border-radius: 14px; font-size: 18pt; font-weight: 800; }
+QLabel#heroTitle { color: white; font-size: 28pt; font-weight: 750; }
+QLabel#heroText { color: #D4E5DF; font-size: 11pt; }
+QLabel#whiteTitle { color: white; font-size: 16pt; font-weight: 700; }
+QPushButton { background: #FFFFFF; color: #29423B; border: 1px solid #D9E3DE; border-radius: 9px; padding: 9px 14px; font-weight: 600; }
+QPushButton:hover { background: #F0F6F2; border-color: #AFC9BD; }
+QPushButton:pressed { background: #E2EEE8; }
+QPushButton[variant='primary'] { color: #FFFFFF; background: #2C766A; border: 1px solid #2C766A; }
+QPushButton[variant='primary']:hover { background: #236458; }
+QPushButton[variant='danger'] { color: #A53B45; background: #FFF5F5; border-color: #F2D8D9; }
+QPushButton[variant='nav'] { color: #C9D9D4; background: transparent; border: none; text-align: left; padding: 11px 13px; font-size: 10.5pt; }
+QPushButton[variant='nav']:hover { color: white; background: #214C43; }
+QPushButton[variant='nav']:checked { color: white; background: #28574E; border-left: 3px solid #C8E6A0; }
+QPushButton:disabled { color: #98A6A0; background: #E9EEEB; border-color: #E9EEEB; }
+QLineEdit, QPlainTextEdit, QComboBox, QDateTimeEdit, QSpinBox {
+  background: #FFFFFF; border: 1px solid #D9E3DE; border-radius: 9px; padding: 9px 11px; selection-background-color: #2C766A;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QDateTimeEdit:focus, QSpinBox:focus { border: 1px solid #2C766A; }
+QComboBox::drop-down { border: none; width: 26px; }
+QTableWidget { background: #FFFFFF; border: 1px solid #E3EAE6; border-radius: 12px; gridline-color: #EEF2EF; selection-background-color: #E4F2EC; selection-color: #173D36; alternate-background-color: #FAFCFA; }
+QHeaderView::section { color: #71817C; background: #F8FAF8; padding: 11px 9px; border: none; border-bottom: 1px solid #E3EAE6; font-size: 9pt; font-weight: 700; }
+QTableWidget::item { padding: 7px; border: none; }
+QProgressBar { background: #E4ECE7; border: none; border-radius: 7px; text-align: center; height: 14px; color: #173D36; }
+QProgressBar::chunk { background: #72AA84; border-radius: 7px; }
+QTabWidget::pane { background: #FFFFFF; border: 1px solid #E3EAE6; border-radius: 12px; top: -1px; }
+QTabWidget QWidget { background: #FFFFFF; }
+QTabBar::tab { background: #EDF2EE; color: #71817C; border: none; border-radius: 8px; padding: 10px 18px; margin: 3px; font-weight: 650; }
+QTabBar::tab:selected { color: #FFFFFF; background: #2C766A; }
+QCheckBox { spacing: 8px; }
+QTextBrowser { background: #FFFFFF; border: none; border-radius: 12px; padding: 12px; }
+QDialog { background: #F4F6F4; }
+"""
 
 
 class ResetLinkServer:
-    """Callback local: o link de recuperação abre uma caixa da aplicação desktop."""
+    """Callback local para receber o link de redefinição enquanto o app está aberto."""
 
     def __init__(self):
         self.tokens: queue.Queue[str] = queue.Queue()
@@ -43,7 +108,7 @@ class ResetLinkServer:
                     handler_self.send_error(404)
                     return
                 self.tokens.put(token)
-                body = b"<!doctype html><meta charset='utf-8'><title>Estuda+</title><p>Volte ao aplicativo Estuda+ para criar sua nova senha.</p>"
+                body = b"<!doctype html><meta charset='utf-8'><p>Volte ao Estuda+ para criar sua nova senha.</p>"
                 handler_self.send_response(200)
                 handler_self.send_header("Content-Type", "text/html; charset=utf-8")
                 handler_self.send_header("Content-Length", str(len(body)))
@@ -56,15 +121,43 @@ class ResetLinkServer:
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         self.port = self.server.server_address[1]
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def close(self):
         self.server.shutdown()
         self.server.server_close()
 
 
-class StudyWindow(tk.Tk):
+class ChatWorker(QThread):
+    succeeded = Signal(object, int)
+    failed = Signal(str, int, str, int, int)
+
+    def __init__(self, service, user, conversation_id, content=None, complex_task=False,
+                 message_id=None, previous_message_id=0):
+        super().__init__()
+        self.service, self.user = service, user
+        self.conversation_id, self.content = conversation_id, content
+        self.complex_task, self.message_id = complex_task, message_id
+        self.previous_message_id = previous_message_id
+
+    def run(self):
+        try:
+            if self.message_id is None:
+                result = self.service.send(self.user, self.conversation_id, self.content, self.complex_task)
+            else:
+                result = self.service.resend(self.user, self.message_id, self.complex_task)
+            self.succeeded.emit(result, self.conversation_id)
+        except (ChatError, AIUnavailable) as exc:
+            self.failed.emit(str(exc), self.conversation_id, self.content or "",
+                             self.message_id or 0, self.previous_message_id)
+        except Exception as exc:
+            logger.exception("Falha inesperada no worker do chat (error=%s)", type(exc).__name__)
+            self.failed.emit("O assistente está temporariamente indisponível.",
+                             self.conversation_id, self.content or "", self.message_id or 0,
+                             self.previous_message_id)
+
+
+class StudyWindow(QMainWindow):
     SESSION_IDLE_SECONDS = 8 * 60 * 60
 
     def __init__(self, database: Database):
@@ -80,138 +173,191 @@ class StudyWindow(tk.Tk):
         self.reset_server = ResetLinkServer()
         self.user = None
         self.last_activity = time.monotonic()
-        self.worker_queue: queue.Queue = queue.Queue()
-        self.selected_task_id: int | None = None
         self.active_conversation_id: int | None = None
-        self.task_filter_status = None
-        self.title("Estuda+ | Assistente de estudos")
-        self.geometry("1180x790")
-        self.minsize(760, 620)
-        self.configure(bg=BG)
-        self.protocol("WM_DELETE_WINDOW", self.close_app)
-        self.bind_all("<KeyPress>", self._activity, add="+")
-        self.bind_all("<Button>", self._activity, add="+")
-        self._setup_style()
-        self.show_auth()
-        self.after(1000, self._poll_background)
-        self.after(30_000, self._check_idle)
+        self.chat_workers: set[ChatWorker] = set()
 
-    def _setup_style(self):
-        style = ttk.Style(self)
-        style.theme_use("clam")
-        style.configure("TFrame", background=BG)
-        style.configure("Card.TFrame", background=WHITE)
-        style.configure("TLabel", background=BG, foreground=INK, font=("Segoe UI", 10))
-        style.configure("Muted.TLabel", background=BG, foreground=MUTED, font=("Segoe UI", 10))
-        style.configure("Title.TLabel", background=BG, foreground=INK, font=("Segoe UI", 21, "bold"))
-        style.configure("Section.TLabel", background=WHITE, foreground=INK, font=("Segoe UI", 13, "bold"))
-        style.configure("TButton", font=("Segoe UI", 10), padding=(10, 7))
-        style.configure("Accent.TButton", background=ACCENT, foreground=WHITE, borderwidth=0)
-        style.map("Accent.TButton", background=[("active", "#4035c7")])
-        style.configure("Treeview", font=("Segoe UI", 10), rowheight=30, background=WHITE, fieldbackground=WHITE)
-        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background="#e9ebf5")
-        style.configure("TNotebook.Tab", font=("Segoe UI", 10), padding=(11, 8))
+        self.setWindowTitle("Estuda+ | Assistente de estudos")
+        self.setMinimumSize(1120, 700)
+        self.resize(1380, 900)
+        self.setStyleSheet(APP_STYLE)
+        self.show_auth()
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._poll_background)
+        self.timer.start(1000)
+        self.idle_timer = QTimer(self)
+        self.idle_timer.timeout.connect(self._check_idle)
+        self.idle_timer.start(30_000)
+        QApplication.instance().installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress):
+            self.last_activity = time.monotonic()
+        return super().eventFilter(watched, event)
+
+    def closeEvent(self, event):
+        if any(worker.isRunning() for worker in self.chat_workers):
+            QMessageBox.information(self, "Solicitação em andamento", "Aguarde a resposta do assistente antes de fechar o Estuda+.")
+            event.ignore()
+            return
+        self.reset_server.close()
+        super().closeEvent(event)
 
     @staticmethod
-    def _label(parent, text, style="TLabel", **kwargs):
-        return ttk.Label(parent, text=text, style=style, **kwargs)
+    def _label(text: str, role: str | None = None) -> QLabel:
+        label = QLabel(text)
+        if role:
+            label.setProperty("role", role)
+            label.style().unpolish(label)
+            label.style().polish(label)
+        return label
 
-    def _activity(self, _event=None):
-        self.last_activity = time.monotonic()
+    @staticmethod
+    def _card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+        frame = QFrame()
+        frame.setObjectName("card")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(12)
+        if title:
+            label = StudyWindow._label(title, "heading")
+            layout.addWidget(label)
+        return frame, layout
 
-    def close_app(self):
-        self.reset_server.close()
-        self.destroy()
+    @staticmethod
+    def _button(text: str, callback=None, variant: str | None = None) -> QPushButton:
+        button = QPushButton(text)
+        if variant:
+            button.setProperty("variant", variant)
+        if callback:
+            button.clicked.connect(callback)
+        return button
 
-    def _check_idle(self):
-        if self.user and time.monotonic() - self.last_activity >= self.SESSION_IDLE_SECONDS:
-            messagebox.showinfo("Sessão encerrada", "Sua sessão expirou após 8 horas sem atividade. Entre novamente.")
-            self.logout(show_message=False)
-        self.after(30_000, self._check_idle)
-
-    def _poll_background(self):
-        while True:
-            try:
-                kind, data = self.worker_queue.get_nowait()
-            except queue.Empty:
-                break
-            if kind == "chat_success" and self.user:
-                self._load_messages()
-                self._load_suggestions()
-                self._refresh_dashboard()
-            elif kind == "chat_error" and self.user:
-                self._load_messages()
-                messagebox.showerror("Assistente indisponível", str(data))
-            elif kind == "reset_token":
-                self._set_new_password(data)
-            elif kind == "chat_finished" and self.user and hasattr(self, "chat_send_button"):
-                self.chat_send_button.config(state="normal")
-        if self.user:
-            self._tick_focus()
-            try:
-                processed = self.tasks.process_due_reminders(self.mailer)
-                if processed:
-                    self._refresh_notifications()
-                    self._refresh_tasks()
-            except Exception as exc:
-                logger.exception("Falha ao processar lembretes (error=%s)", type(exc).__name__)
-        self.after(1000, self._poll_background)
+    @staticmethod
+    def _table(headers: list[str], widths: list[int] | None = None) -> QTableWidget:
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.setAlternatingRowColors(True)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        if widths:
+            for column, width in enumerate(widths):
+                table.setColumnWidth(column, width)
+        return table
 
     def show_auth(self):
-        for child in self.winfo_children():
-            if child is not getattr(self, "_background_after", None):
-                child.destroy()
-        page = ttk.Frame(self, padding=32)
-        page.place(relx=.5, rely=.5, anchor="center", width=470, relheight=.82)
-        self._label(page, "Estuda+", "Title.TLabel").pack(anchor="w")
-        self._label(page, "Planeje seus estudos e acompanhe seu progresso.", "Muted.TLabel").pack(anchor="w", pady=(2, 18))
-        card = ttk.Frame(page, style="Card.TFrame", padding=22)
-        card.pack(fill="both", expand=True)
-        notebook = ttk.Notebook(card)
-        notebook.pack(fill="both", expand=True)
-        login_tab = ttk.Frame(notebook, style="Card.TFrame", padding=16)
-        register_tab = ttk.Frame(notebook, style="Card.TFrame", padding=16)
-        notebook.add(login_tab, text="Entrar")
-        notebook.add(register_tab, text="Criar conta")
-        self.login_email = self._field(login_tab, "E-mail")
-        self.login_password = self._field(login_tab, "Senha", show="•")
-        ttk.Button(login_tab, text="Entrar", style="Accent.TButton", command=self.login).pack(fill="x", pady=(12, 7))
-        ttk.Button(login_tab, text="Esqueci minha senha", command=self.forgot_password).pack(fill="x")
-        self.register_name = self._field(register_tab, "Nome")
-        self.register_email = self._field(register_tab, "E-mail")
-        self.register_password = self._field(register_tab, "Senha (mínimo 8 caracteres)", show="•")
-        ttk.Button(register_tab, text="Criar conta", style="Accent.TButton", command=self.register).pack(fill="x", pady=(12, 0))
-        self._label(page, "Seus dados ficam neste computador. O chat envia apenas o contexto necessário ao provedor de IA configurado.", "Muted.TLabel", wraplength=410, justify="left").pack(anchor="w", pady=(12, 0))
+        self.user = None
+        page = QWidget()
+        outer = QHBoxLayout(page)
+        outer.setContentsMargins(36, 28, 36, 28)
+        outer.setSpacing(24)
 
-    def _field(self, parent, caption, show=None):
-        group = ttk.Frame(parent, style="Card.TFrame")
-        group.pack(fill="x", pady=6)
-        ttk.Label(group, text=caption, background=WHITE, foreground=INK).pack(anchor="w", pady=(0, 4))
-        entry = ttk.Entry(group, show=show, font=("Segoe UI", 11))
-        entry.pack(fill="x", ipady=6)
-        return entry
+        hero = QFrame()
+        hero.setObjectName("hero")
+        hero.setMinimumWidth(360)
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(38, 42, 38, 38)
+        hero_layout.setSpacing(18)
+        hero_layout.addWidget(self._label("✦   Estuda+", "whiteTitle"))
+        hero_layout.addStretch(1)
+        hero_layout.addWidget(self._label("Seu próximo\ngrande passo\ncomeça aqui.", "heroTitle"))
+        hero_layout.addWidget(self._label("Organize tarefas, encontre foco e avance um pouco todos os dias.", "heroText"))
+        hero_card = QFrame()
+        hero_card.setObjectName("heroAccent")
+        hero_card_layout = QVBoxLayout(hero_card)
+        hero_card_layout.setContentsMargins(18, 16, 18, 16)
+        hero_card_layout.addWidget(self._label("✦  Planeje com clareza", "whiteTitle"))
+        hero_card_layout.addWidget(self._label("Uma rotina simples deixa o estudo mais leve e consistente.", "heroText"))
+        hero_layout.addWidget(hero_card)
+        hero_layout.addStretch(1)
+        outer.addWidget(hero, 5)
+
+        auth_card = QFrame()
+        auth_card.setObjectName("authCard")
+        auth_layout = QVBoxLayout(auth_card)
+        auth_layout.setContentsMargins(40, 36, 40, 30)
+        auth_layout.setSpacing(14)
+        auth_layout.addWidget(self._label("Bem-vindo de volta", "title"))
+        auth_layout.addWidget(self._label("Entre para continuar seu plano de estudos.", "subtitle"))
+
+        tabs = QTabWidget()
+        login = QWidget()
+        login_form = QVBoxLayout(login)
+        login_form.setContentsMargins(10, 22, 10, 12)
+        login_form.setSpacing(10)
+        login_form.addStretch(1)
+        login_form.addWidget(self._label("E-mail", "eyebrow"))
+        self.login_email = QLineEdit()
+        self.login_email.setPlaceholderText("voce@exemplo.com")
+        login_form.addWidget(self.login_email)
+        login_form.addWidget(self._label("Senha", "eyebrow"))
+        self.login_password = QLineEdit()
+        self.login_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.login_password.setPlaceholderText("Sua senha")
+        self.login_password.returnPressed.connect(self.login)
+        login_form.addWidget(self.login_password)
+        login_form.addSpacing(8)
+        login_form.addWidget(self._button("Entrar", self.login, "primary"))
+        forgot = self._button("Esqueci minha senha", self.forgot_password)
+        forgot.setFlat(True)
+        login_form.addWidget(forgot)
+        login_form.addStretch(1)
+
+        register = QWidget()
+        register_form = QVBoxLayout(register)
+        register_form.setContentsMargins(10, 22, 10, 12)
+        register_form.setSpacing(9)
+        register_form.addStretch(1)
+        register_form.addWidget(self._label("Nome", "eyebrow"))
+        self.register_name = QLineEdit()
+        self.register_name.setPlaceholderText("Como podemos chamar você?")
+        register_form.addWidget(self.register_name)
+        register_form.addWidget(self._label("E-mail", "eyebrow"))
+        self.register_email = QLineEdit()
+        self.register_email.setPlaceholderText("voce@exemplo.com")
+        register_form.addWidget(self.register_email)
+        register_form.addWidget(self._label("Senha", "eyebrow"))
+        self.register_password = QLineEdit()
+        self.register_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.register_password.setPlaceholderText("Mínimo de 8 caracteres")
+        register_form.addWidget(self.register_password)
+        register_form.addSpacing(8)
+        register_form.addWidget(self._button("Criar conta", self.register, "primary"))
+        register_form.addStretch(1)
+        tabs.addTab(login, "Entrar")
+        tabs.addTab(register, "Criar conta")
+        auth_layout.addWidget(tabs, 1)
+        auth_layout.addWidget(self._label("Seus dados são armazenados neste computador.", "subtitle"))
+        outer.addWidget(auth_card, 4)
+        self.setCentralWidget(page)
+        self.login_email.setFocus()
 
     def register(self):
         try:
-            self.auth.register(self.register_name.get(), self.register_email.get(), self.register_password.get())
+            self.auth.register(self.register_name.text(), self.register_email.text(), self.register_password.text())
         except AuthenticationError as exc:
-            messagebox.showerror("Não foi possível criar a conta", str(exc))
+            QMessageBox.warning(self, "Não foi possível criar a conta", str(exc))
             return
-        messagebox.showinfo("Conta criada", "Conta criada. Agora você pode entrar.")
+        QMessageBox.information(self, "Conta criada", "Conta criada. Agora você pode entrar.")
 
     def login(self):
         try:
-            self.user = self.auth.login(self.login_email.get(), self.login_password.get())
+            self.user = self.auth.login(self.login_email.text(), self.login_password.text())
         except AuthenticationError:
-            messagebox.showerror("Não foi possível entrar", "E-mail ou senha inválidos.")
+            QMessageBox.warning(self, "Não foi possível entrar", "E-mail ou senha inválidos.")
             return
         self.last_activity = time.monotonic()
         self.focus.recover()
         self.show_main()
 
     def forgot_password(self):
-        email = simpledialog.askstring("Recuperar senha", "Informe o e-mail da conta:", parent=self)
-        if not email:
+        from PySide6.QtWidgets import QInputDialog
+        email, accepted = QInputDialog.getText(self, "Recuperar senha", "Informe o e-mail da conta:")
+        if not accepted or not email:
             return
         try:
             token = self.auth.create_password_reset(email)
@@ -221,736 +367,866 @@ class StudyWindow(tk.Tk):
                 logger.info("E-mail de recuperação enviado")
         except Exception as exc:
             logger.warning("Não foi possível processar recuperação de conta (error=%s)", type(exc).__name__)
-        messagebox.showinfo("Recuperação", "Se houver uma conta para esse endereço, enviaremos as instruções de recuperação. Configure o envio de e-mail para receber o link.")
+        QMessageBox.information(self, "Recuperação", "Se houver uma conta para esse endereço, enviaremos as instruções. Configure o e-mail para receber o link.")
 
     def _set_new_password(self, token):
-        password = simpledialog.askstring("Nova senha", "Digite uma nova senha com pelo menos 8 caracteres:", show="•", parent=self)
-        if not password:
+        from PySide6.QtWidgets import QInputDialog
+        password, accepted = QInputDialog.getText(self, "Nova senha", "Digite uma nova senha (mínimo 8 caracteres):", QLineEdit.EchoMode.Password)
+        if not accepted or not password:
             return
         try:
             self.auth.reset_password(token, password)
         except AuthenticationError as exc:
-            messagebox.showerror("Não foi possível redefinir", str(exc))
+            QMessageBox.warning(self, "Não foi possível redefinir", str(exc))
             return
-        messagebox.showinfo("Senha atualizada", "Sua senha foi alterada. Entre novamente.")
-
-    def logout(self, show_message=True):
-        self.user = None
-        self.active_conversation_id = None
-        self.show_auth()
-        if show_message:
-            messagebox.showinfo("Sessão encerrada", "Você saiu da sua conta.")
+        QMessageBox.information(self, "Senha atualizada", "Sua senha foi alterada. Entre novamente.")
 
     def show_main(self):
-        for child in self.winfo_children():
-            child.destroy()
-        header = ttk.Frame(self, padding=(18, 13))
-        header.pack(fill="x")
-        self._label(header, "Estuda+", "Title.TLabel").pack(side="left")
-        self._label(header, f"Olá, {self.user['name']}", "Muted.TLabel").pack(side="left", padx=16, pady=(7, 0))
-        unread = len(self.notifications.list_notifications(self.user["id"], unread_only=True))
-        self.header_notifications = ttk.Button(header, text=f"Notificações ({unread})", command=lambda: self.tabs.select(self.notifications_page))
-        self.header_notifications.pack(side="right", padx=(8, 0))
-        ttk.Button(header, text="Sair", command=self.logout).pack(side="right")
-        self.tabs = ttk.Notebook(self)
-        self.tabs.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-        self.dashboard_page = ttk.Frame(self.tabs, padding=16)
-        self.tasks_page = ttk.Frame(self.tabs, padding=16)
-        self.focus_page = ttk.Frame(self.tabs, padding=16)
-        self.chat_page = ttk.Frame(self.tabs, padding=16)
-        self.notifications_page = ttk.Frame(self.tabs, padding=16)
-        self.history_page = ttk.Frame(self.tabs, padding=16)
-        self.account_page = ttk.Frame(self.tabs, padding=16)
-        for page, title in ((self.dashboard_page, "Visão geral"), (self.tasks_page, "Tarefas"), (self.focus_page, "Foco"),
-                            (self.chat_page, "Assistente"), (self.notifications_page, "Notificações"),
-                            (self.history_page, "Histórico"), (self.account_page, "Conta")):
-            self.tabs.add(page, text=title)
+        root = QWidget()
+        layout = QHBoxLayout(root)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.sidebar = QFrame()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(235)
+        side = QVBoxLayout(self.sidebar)
+        side.setContentsMargins(16, 24, 16, 18)
+        side.setSpacing(8)
+        logo_row = QHBoxLayout()
+        mark = self._label("✦", None)
+        mark.setObjectName("brandMark")
+        mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        mark.setFixedSize(40, 40)
+        logo_row.addWidget(mark)
+        logo_row.addWidget(self._label("Estuda+", "whiteTitle"))
+        logo_row.addStretch(1)
+        side.addLayout(logo_row)
+        side.addSpacing(24)
+        side.addWidget(self._label("ESPAÇO DE ESTUDO", "eyebrow"))
+        self.nav_buttons = []
+        self.stack = QStackedWidget()
+        self.page_titles = []
+        page_specs = [
+            ("⌂", "Visão geral", self._build_dashboard), ("▤", "Tarefas", self._build_tasks),
+            ("◷", "Foco", self._build_focus), ("✦", "Assistente", self._build_chat),
+            ("◉", "Notificações", self._build_notifications), ("▦", "Histórico", self._build_history),
+            ("◎", "Conta", self._build_account),
+        ]
         if self.user["role"] == "admin":
-            self.admin_page = ttk.Frame(self.tabs, padding=16)
-            self.tabs.add(self.admin_page, text="Administração")
-        self._build_dashboard()
-        self._build_tasks()
-        self._build_focus()
-        self._build_chat()
-        self._build_notifications()
-        self._build_history()
-        self._build_account()
-        if self.user["role"] == "admin":
-            self._build_admin()
+            page_specs.append(("⚙", "Administração", self._build_admin))
+        for index, (icon, title, builder) in enumerate(page_specs):
+            page = QWidget()
+            page.setObjectName("page")
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(30, 26, 30, 28)
+            page_layout.setSpacing(18)
+            builder(page_layout)
+            self.stack.addWidget(page)
+            self.page_titles.append(title)
+            button = QPushButton(f"{icon}    {title}")
+            button.setProperty("variant", "nav")
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked=False, idx=index: self._set_page(idx))
+            self.nav_buttons.append(button)
+            side.addWidget(button)
+        side.addStretch(1)
+        profile = QFrame()
+        profile.setObjectName("heroAccent")
+        profile_layout = QVBoxLayout(profile)
+        profile_layout.setContentsMargins(13, 13, 13, 13)
+        profile_name = QLabel(self.user["name"])
+        profile_name.setStyleSheet("color:white;font-weight:700")
+        profile_layout.addWidget(profile_name)
+        email_label = QLabel(self.user["email"])
+        email_label.setStyleSheet("color:#C9D9D4;font-size:9pt")
+        profile_layout.addWidget(email_label)
+        side.addWidget(profile)
+        side.addWidget(self._button("Sair da conta", self.logout, "nav"))
+        layout.addWidget(self.sidebar)
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        topbar = QFrame()
+        topbar.setObjectName("topbar")
+        top_layout = QHBoxLayout(topbar)
+        top_layout.setContentsMargins(30, 18, 30, 18)
+        self.page_heading = self._label("Visão geral", "heading")
+        top_layout.addWidget(self.page_heading)
+        top_layout.addStretch(1)
+        self.header_notifications = self._button("Notificações · 0", lambda: self._set_page(4))
+        top_layout.addWidget(self.header_notifications)
+        content_layout.addWidget(topbar)
+        content_layout.addWidget(self.stack, 1)
+        layout.addWidget(content, 1)
+        self.setCentralWidget(root)
+        self._set_page(0)
         self._refresh_dashboard()
         self._refresh_tasks()
         self._refresh_notifications()
         self._load_conversations()
         self._tick_focus()
 
-    def _build_dashboard(self):
-        top = ttk.Frame(self.dashboard_page)
-        top.pack(fill="x")
-        self._label(top, "Seu progresso", "Title.TLabel").pack(side="left")
-        self.period = ttk.Combobox(top, values=("7 dias", "30 dias", "Todo o período"), state="readonly", width=18)
-        self.period.set("30 dias")
-        self.period.pack(side="right")
-        self.period.bind("<<ComboboxSelected>>", lambda _e: self._refresh_dashboard())
-        cards = ttk.Frame(self.dashboard_page)
-        cards.pack(fill="x", pady=18)
+    def _set_page(self, index: int):
+        if not hasattr(self, "stack"):
+            return
+        self.stack.setCurrentIndex(index)
+        self.page_heading.setText(self.page_titles[index])
+        for i, button in enumerate(self.nav_buttons):
+            button.setChecked(i == index)
+
+    def logout(self):
+        self.user = None
+        self.active_conversation_id = None
+        self.show_auth()
+
+    def _check_idle(self):
+        if self.user and time.monotonic() - self.last_activity >= self.SESSION_IDLE_SECONDS:
+            QMessageBox.information(self, "Sessão encerrada", "Sua sessão expirou após 8 horas sem atividade. Entre novamente.")
+            self.logout()
+
+    def _poll_background(self):
+        while True:
+            try:
+                token = self.reset_server.tokens.get_nowait()
+            except queue.Empty:
+                break
+            self._set_new_password(token)
+        if self.user:
+            self._tick_focus()
+            try:
+                if self.tasks.process_due_reminders(self.mailer):
+                    self._refresh_notifications()
+                    self._refresh_tasks()
+            except Exception as exc:
+                logger.exception("Falha ao processar lembretes (error=%s)", type(exc).__name__)
+
+    def _build_dashboard(self, layout):
+        intro = QVBoxLayout()
+        intro.addWidget(self._label(f"Olá, {self.user['name'].split()[0]} 👋", "title"))
+        intro.addWidget(self._label("Um passo de cada vez. Veja como seus estudos estão avançando.", "subtitle"))
+        layout.addLayout(intro)
+        period_row = QHBoxLayout()
+        period_row.addStretch(1)
+        self.period = QComboBox()
+        self.period.addItems(("7 dias", "30 dias", "Todo o período"))
+        self.period.setCurrentText("30 dias")
+        self.period.currentTextChanged.connect(lambda _value: self._refresh_dashboard())
+        period_row.addWidget(QLabel("Período"))
+        period_row.addWidget(self.period)
+        layout.addLayout(period_row)
+
+        cards = QHBoxLayout()
+        cards.setSpacing(12)
         self.metric_labels = {}
-        for key, title in (("completed", "Concluídas"), ("pending", "Pendentes"), ("overdue", "Atrasadas"), ("focus", "Sessões concluídas"), ("time", "Tempo focado")):
-            card = ttk.Frame(cards, style="Card.TFrame", padding=15)
-            card.pack(side="left", fill="both", expand=True, padx=(0, 8))
-            ttk.Label(card, text=title, background=WHITE, foreground=MUTED).pack(anchor="w")
-            value = ttk.Label(card, text="—", background=WHITE, foreground=INK, font=("Segoe UI", 18, "bold"))
-            value.pack(anchor="w", pady=(5, 0))
+        for key, title, detail in (
+            ("completed", "Concluídas", "tarefas finalizadas"),
+            ("pending", "Pendentes", "dentro do prazo"),
+            ("overdue", "Atrasadas", "pedem atenção"),
+            ("focus", "Sessões", "de foco completas"),
+            ("time", "Tempo focado", "neste período"),
+        ):
+            card, card_layout = self._card()
+            card_layout.addWidget(self._label(title, "eyebrow"))
+            value = self._label("—", "metric")
+            card_layout.addWidget(value)
+            card_layout.addWidget(self._label(detail, "subtitle"))
             self.metric_labels[key] = value
-        self._label(self.dashboard_page, "Tarefas que precisam de atenção", "Section.TLabel").pack(anchor="w", pady=(8, 10))
-        self.dashboard_tasks = ttk.Treeview(self.dashboard_page, columns=("title", "deadline", "status"), show="headings", height=10)
-        for column, title, width in (("title", "Tarefa", 450), ("deadline", "Prazo", 180), ("status", "Status", 130)):
-            self.dashboard_tasks.heading(column, text=title)
-            self.dashboard_tasks.column(column, width=width, anchor="w")
-        self.dashboard_tasks.pack(fill="both", expand=True)
+            cards.addWidget(card, 1)
+        layout.addLayout(cards)
+
+        tasks_card, task_layout = self._card("Prioridades da semana")
+        task_layout.addWidget(self._label("Tarefas pendentes organizadas pelo prazo mais próximo.", "subtitle"))
+        self.dashboard_tasks = self._table(["Tarefa", "Prazo", "Status"], [540, 180, 130])
+        task_layout.addWidget(self.dashboard_tasks, 1)
+        layout.addWidget(tasks_card, 1)
 
     def _refresh_dashboard(self):
         if not self.user or not hasattr(self, "metric_labels"):
             return
         all_tasks = self.tasks.list_tasks(self.user["id"], status="Todas")
+        now = datetime.now(timezone.utc).isoformat()
         completed = sum(row["status"] == "Concluída" for row in all_tasks)
-        overdue = sum(row["status"] == "Pendente" and row["deadline"] < datetime.now(timezone.utc).isoformat() for row in all_tasks)
-        pending = sum(row["status"] == "Pendente" and row["deadline"] >= datetime.now(timezone.utc).isoformat() for row in all_tasks)
-        metrics = self.focus.metrics(self.user["id"], self.period.get() if hasattr(self, "period") else "30 dias")
+        overdue = sum(row["status"] == "Pendente" and row["deadline"] < now for row in all_tasks)
+        pending = sum(row["status"] == "Pendente" and row["deadline"] >= now for row in all_tasks)
+        metrics = self.focus.metrics(self.user["id"], self.period.currentText() if hasattr(self, "period") else "30 dias")
         seconds = metrics["effective_seconds"]
-        self.metric_labels["completed"].config(text=str(completed))
-        self.metric_labels["pending"].config(text=str(pending))
-        self.metric_labels["overdue"].config(text=str(overdue))
-        self.metric_labels["focus"].config(text=str(metrics["completed_sessions"]))
-        self.metric_labels["time"].config(text=f"{seconds // 3600}h {(seconds % 3600) // 60}min")
-        for item in self.dashboard_tasks.get_children():
-            self.dashboard_tasks.delete(item)
-        for row in all_tasks:
-            if row["status"] == "Pendente":
-                status = "Atrasada" if row["deadline"] < datetime.now(timezone.utc).isoformat() else "Pendente"
-                due = datetime.fromisoformat(row["deadline"]).astimezone().strftime("%d/%m/%Y %H:%M")
-                self.dashboard_tasks.insert("", "end", iid=f"d{row['id']}", values=(row["title"], due, status))
+        values = {"completed": str(completed), "pending": str(pending), "overdue": str(overdue),
+                  "focus": str(metrics["completed_sessions"]), "time": f"{seconds // 3600}h {(seconds % 3600) // 60}m"}
+        for key, value in values.items():
+            self.metric_labels[key].setText(value)
+        rows = [row for row in all_tasks if row["status"] == "Pendente"][:12]
+        self.dashboard_tasks.setRowCount(0)
+        for row in rows:
+            due = datetime.fromisoformat(row["deadline"]).astimezone().strftime("%d/%m/%Y %H:%M")
+            status = "Atrasada" if row["deadline"] < now else "No prazo"
+            self._append_row(self.dashboard_tasks, [row["title"], due, status], row["id"])
 
-    def _build_tasks(self):
-        toolbar = ttk.Frame(self.tasks_page)
-        toolbar.pack(fill="x")
-        self._label(toolbar, "Gerencie prazos e etapas", "Title.TLabel").pack(side="left")
-        ttk.Button(toolbar, text="+ Nova tarefa", style="Accent.TButton", command=lambda: self._task_dialog()).pack(side="right")
-        filters = ttk.Frame(self.tasks_page)
-        filters.pack(fill="x", pady=10)
-        self.filter_status = ttk.Combobox(filters, values=("Todas", "Pendente", "Concluída", "Atrasada"), state="readonly", width=14)
-        self.filter_status.set("Todas")
-        self.filter_priority = ttk.Combobox(filters, values=("Todas", "Baixa", "Média", "Alta"), state="readonly", width=12)
-        self.filter_priority.set("Todas")
-        self.filter_from = ttk.Entry(filters, width=13)
-        self.filter_to = ttk.Entry(filters, width=13)
-        for caption, widget in (("Status", self.filter_status), ("Prioridade", self.filter_priority), ("Prazo de", self.filter_from), ("até", self.filter_to)):
-            ttk.Label(filters, text=caption).pack(side="left", padx=(0, 5))
-            widget.pack(side="left", padx=(0, 12), ipady=3)
-        ttk.Button(filters, text="Filtrar", command=self._refresh_tasks).pack(side="left")
-        ttk.Button(filters, text="Limpar", command=self._clear_filters).pack(side="left", padx=5)
-        self._label(self.tasks_page, "Datas de prazo: AAAA-MM-DD", "Muted.TLabel").pack(anchor="w", pady=(0, 7))
-        columns = ("title", "deadline", "priority", "status", "subtasks")
-        self.task_tree = ttk.Treeview(self.tasks_page, columns=columns, show="headings", selectmode="browse")
-        for col, caption, width in (("title", "Tarefa", 340), ("deadline", "Prazo", 170), ("priority", "Prioridade", 110), ("status", "Status", 110), ("subtasks", "Etapas pendentes", 125)):
-            self.task_tree.heading(col, text=caption)
-            self.task_tree.column(col, width=width, anchor="w")
-        self.task_tree.pack(fill="both", expand=True)
-        self.task_tree.bind("<<TreeviewSelect>>", self._task_selected)
-        buttons = ttk.Frame(self.tasks_page)
-        buttons.pack(fill="x", pady=(10, 0))
-        for label, callback in (("Editar", self._edit_selected_task), ("Concluir / reabrir", self._toggle_task),
-                                ("Subtarefas", self._manage_subtasks), ("Lembretes", self._manage_reminders),
-                                ("Excluir", self._delete_task)):
-            ttk.Button(buttons, text=label, command=callback).pack(side="left", padx=(0, 7))
+    @staticmethod
+    def _append_row(table, values, record_id=None):
+        row = table.rowCount()
+        table.insertRow(row)
+        for col, value in enumerate(values):
+            item = QTableWidgetItem(str(value))
+            if col == 0 and record_id is not None:
+                item.setData(Qt.ItemDataRole.UserRole, record_id)
+            table.setItem(row, col, item)
+
+    def _build_tasks(self, layout):
+        top = QHBoxLayout()
+        text = QVBoxLayout()
+        text.addWidget(self._label("Planejamento", "title"))
+        text.addWidget(self._label("Organize prazos, prioridades e próximas etapas.", "subtitle"))
+        top.addLayout(text)
+        top.addStretch(1)
+        top.addWidget(self._button("＋  Nova tarefa", self._task_dialog, "primary"))
+        layout.addLayout(top)
+
+        filters_card, filters = self._card("Filtros")
+        filter_row = QHBoxLayout()
+        self.filter_status = QComboBox(); self.filter_status.addItems(("Todas", "Pendente", "Concluída", "Atrasada"))
+        self.filter_priority = QComboBox(); self.filter_priority.addItems(("Todas", "Baixa", "Média", "Alta"))
+        self.filter_from = QLineEdit(); self.filter_from.setPlaceholderText("AAAA-MM-DD")
+        self.filter_to = QLineEdit(); self.filter_to.setPlaceholderText("AAAA-MM-DD")
+        for label, widget in (("Status", self.filter_status), ("Prioridade", self.filter_priority), ("Prazo de", self.filter_from), ("até", self.filter_to)):
+            block = QVBoxLayout(); block.addWidget(self._label(label, "eyebrow")); block.addWidget(widget); filter_row.addLayout(block)
+        filter_row.addWidget(self._button("Aplicar", self._refresh_tasks, "primary"))
+        filter_row.addWidget(self._button("Limpar", self._clear_filters))
+        filters.addLayout(filter_row)
+        layout.addWidget(filters_card)
+
+        table_card, table_layout = self._card("Suas tarefas")
+        self.task_table = self._table(["Tarefa", "Prazo", "Prioridade", "Status", "Etapas abertas"], [380, 160, 120, 120, 130])
+        self.task_table.doubleClicked.connect(self._edit_selected_task)
+        table_layout.addWidget(self.task_table, 1)
+        actions = QHBoxLayout()
+        for label, callback, variant in (
+            ("Editar", self._edit_selected_task, None), ("Concluir / reabrir", self._toggle_task, None),
+            ("Subtarefas", self._manage_subtasks, None), ("Lembretes", self._manage_reminders, None),
+            ("Excluir", self._delete_task, "danger"),
+        ):
+            actions.addWidget(self._button(label, callback, variant))
+        actions.addStretch(1)
+        table_layout.addLayout(actions)
+        layout.addWidget(table_card, 1)
 
     def _clear_filters(self):
-        self.filter_status.set("Todas")
-        self.filter_priority.set("Todas")
-        self.filter_from.delete(0, "end")
-        self.filter_to.delete(0, "end")
+        self.filter_status.setCurrentText("Todas")
+        self.filter_priority.setCurrentText("Todas")
+        self.filter_from.clear(); self.filter_to.clear()
         self._refresh_tasks()
 
     def _refresh_tasks(self):
-        if not self.user or not hasattr(self, "task_tree"):
+        if not self.user or not hasattr(self, "task_table"):
             return
-        date_from = self.filter_from.get().strip() if hasattr(self, "filter_from") else ""
-        date_to = self.filter_to.get().strip() if hasattr(self, "filter_to") else ""
+        from_text, to_text = self.filter_from.text().strip(), self.filter_to.text().strip()
         try:
-            if date_from:
-                date_from = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc).isoformat()
-            if date_to:
-                date_to = (datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1) - timedelta(seconds=1)).isoformat()
-            rows = self.tasks.list_tasks(self.user["id"], self.filter_status.get(), self.filter_priority.get(), date_from or None, date_to or None)
+            date_from = datetime.strptime(from_text, "%Y-%m-%d").replace(tzinfo=timezone.utc).isoformat() if from_text else None
+            date_to = (datetime.strptime(to_text, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1) - timedelta(seconds=1)).isoformat() if to_text else None
+            rows = self.tasks.list_tasks(self.user["id"], self.filter_status.currentText(), self.filter_priority.currentText(), date_from, date_to)
         except ValueError:
-            messagebox.showerror("Data inválida", "Informe as datas no formato AAAA-MM-DD.")
+            QMessageBox.warning(self, "Data inválida", "Informe as datas no formato AAAA-MM-DD.")
             return
-        for item in self.task_tree.get_children():
-            self.task_tree.delete(item)
-        for row in rows:
-            status = "Atrasada" if row["status"] == "Pendente" and row["deadline"] < datetime.now(timezone.utc).isoformat() else row["status"]
-            due = datetime.fromisoformat(row["deadline"]).astimezone().strftime("%d/%m/%Y %H:%M")
-            self.task_tree.insert("", "end", iid=str(row["id"]), values=(row["title"], due, row["priority"], status, row["pending_subtasks"]))
+        now = datetime.now(timezone.utc).isoformat()
+        self.task_table.setRowCount(0)
+        for task in rows:
+            status = "Atrasada" if task["status"] == "Pendente" and task["deadline"] < now else task["status"]
+            due = datetime.fromisoformat(task["deadline"]).astimezone().strftime("%d/%m/%Y %H:%M")
+            self._append_row(self.task_table, [task["title"], due, task["priority"], status, task["pending_subtasks"]], task["id"])
         self._refresh_dashboard()
         if hasattr(self, "focus_task"):
             self._refresh_focus_tasks()
 
-    def _task_selected(self, _event=None):
-        selection = self.task_tree.selection()
-        self.selected_task_id = int(selection[0]) if selection else None
-
     def _selected_task(self):
-        selection = self.task_tree.selection()
-        return int(selection[0]) if selection else None
+        row = self.task_table.currentRow() if hasattr(self, "task_table") else -1
+        if row < 0 or not self.task_table.item(row, 0):
+            return None
+        return self.task_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
 
     def _task_dialog(self, task=None):
-        dialog = tk.Toplevel(self)
-        dialog.title("Editar tarefa" if task else "Nova tarefa")
-        dialog.transient(self)
-        dialog.grab_set()
-        frame = ttk.Frame(dialog, padding=20)
-        frame.pack(fill="both", expand=True)
-        title = self._field(frame, "Título (obrigatório; até 120 caracteres)")
-        description = self._field(frame, "Descrição (opcional; até 1000 caracteres)")
-        deadline = self._field(frame, "Prazo (DD/MM/AAAA HH:MM)")
-        priority = ttk.Combobox(frame, values=("Baixa", "Média", "Alta"), state="readonly")
-        priority.set("Média")
-        ttk.Label(frame, text="Prioridade").pack(anchor="w", pady=(7, 4))
-        priority.pack(fill="x", ipady=4)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Editar tarefa" if task else "Nova tarefa")
+        dialog.setMinimumWidth(480)
+        layout = QVBoxLayout(dialog); layout.setContentsMargins(26, 24, 26, 22); layout.setSpacing(15)
+        layout.addWidget(self._label("Detalhes da tarefa", "heading"))
+        form = QFormLayout(); form.setVerticalSpacing(12)
+        title = QLineEdit(); title.setMaxLength(120); title.setPlaceholderText("Ex.: Revisar funções de matemática")
+        description = QPlainTextEdit(); description.setMaximumHeight(90); description.setPlaceholderText("Notas opcionais para esta tarefa")
+        deadline = QDateTimeEdit(QDateTime.currentDateTime().addDays(1)); deadline.setCalendarPopup(True); deadline.setDisplayFormat("dd/MM/yyyy HH:mm")
+        priority = QComboBox(); priority.addItems(("Baixa", "Média", "Alta")); priority.setCurrentText("Média")
         if task:
-            title.insert(0, task["title"])
-            description.insert(0, task["description"])
-            deadline.insert(0, datetime.fromisoformat(task["deadline"]).astimezone().strftime("%d/%m/%Y %H:%M"))
-            priority.set(task["priority"])
-        else:
-            deadline.insert(0, (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y %H:%M"))
-        error = ttk.Label(frame, text="", foreground="#b42318", wraplength=420)
-        error.pack(anchor="w", pady=(8, 0))
+            title.setText(task["title"]); description.setPlainText(task["description"])
+            local_due = datetime.fromisoformat(task["deadline"]).astimezone()
+            deadline.setDateTime(QDateTime.fromString(local_due.strftime("%d/%m/%Y %H:%M"), "dd/MM/yyyy HH:mm"))
+            priority.setCurrentText(task["priority"])
+        form.addRow("Título", title); form.addRow("Descrição", description); form.addRow("Prazo", deadline); form.addRow("Prioridade", priority)
+        layout.addLayout(form)
+        error = self._label("", None); error.setStyleSheet("color:#B84B54")
+        layout.addWidget(error)
+        buttons = QHBoxLayout(); buttons.addStretch(1); buttons.addWidget(self._button("Cancelar", dialog.reject)); buttons.addWidget(self._button("Salvar tarefa", lambda: save(), "primary"))
+        layout.addLayout(buttons)
+
         def save():
             try:
-                due = datetime.strptime(deadline.get().strip(), "%d/%m/%Y %H:%M").astimezone().astimezone(timezone.utc)
+                due = datetime.fromisoformat(deadline.dateTime().toString(Qt.DateFormat.ISODate)).astimezone(timezone.utc)
                 if task:
-                    self.tasks.edit_task(self.user["id"], task["id"], title.get(), due, priority.get(), description.get())
+                    self.tasks.edit_task(self.user["id"], task["id"], title.text(), due, priority.currentText(), description.toPlainText())
                 else:
-                    self.tasks.create_task(self.user["id"], title.get(), due, priority.get(), description.get())
+                    self.tasks.create_task(self.user["id"], title.text(), due, priority.currentText(), description.toPlainText())
             except (ValueError, TaskError) as exc:
-                error.config(text=str(exc) if isinstance(exc, TaskError) else "Use o formato DD/MM/AAAA HH:MM para o prazo.")
+                error.setText(str(exc) if isinstance(exc, TaskError) else "Informe um prazo válido.")
                 return
-            dialog.destroy()
-            self._refresh_tasks()
-        ttk.Button(frame, text="Salvar tarefa", style="Accent.TButton", command=save).pack(fill="x", pady=(14, 0))
-        title.focus_set()
+            dialog.accept(); self._refresh_tasks()
+        title.setFocus()
+        dialog.exec()
 
-    def _edit_selected_task(self):
+    def _edit_selected_task(self, *_args):
         task_id = self._selected_task()
         if not task_id:
-            messagebox.showinfo("Selecione uma tarefa", "Escolha uma tarefa para editar.")
-            return
+            QMessageBox.information(self, "Selecione uma tarefa", "Escolha uma tarefa para editar."); return
         try:
             self._task_dialog(self.tasks.get_task(self.user["id"], task_id))
         except TaskError as exc:
-            messagebox.showerror("Tarefa indisponível", str(exc))
+            QMessageBox.warning(self, "Tarefa indisponível", str(exc))
 
     def _toggle_task(self):
         task_id = self._selected_task()
         if not task_id:
-            messagebox.showinfo("Selecione uma tarefa", "Escolha uma tarefa na lista primeiro.")
-            return
+            QMessageBox.information(self, "Selecione uma tarefa", "Escolha uma tarefa na lista primeiro."); return
         row = self.tasks.get_task(self.user["id"], task_id)
         try:
             self.tasks.set_completed(self.user["id"], task_id, row["status"] != "Concluída")
         except TaskError as exc:
-            messagebox.showerror("Não foi possível concluir", str(exc))
+            QMessageBox.warning(self, "Não foi possível concluir", str(exc))
         self._refresh_tasks()
 
     def _delete_task(self):
         task_id = self._selected_task()
         if not task_id:
-            messagebox.showinfo("Selecione uma tarefa", "Escolha uma tarefa na lista primeiro.")
+            QMessageBox.information(self, "Selecione uma tarefa", "Escolha uma tarefa na lista primeiro."); return
+        answer = QMessageBox.question(self, "Excluir tarefa", "Excluir esta tarefa, subtarefas e lembretes? As sessões de foco concluídas permanecem no histórico.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
             return
-        if messagebox.askyesno("Excluir tarefa", "Excluir esta tarefa, subtarefas e lembretes? As sessões de foco concluídas permanecem no histórico."):
-            try:
-                self.tasks.delete_task(self.user["id"], task_id)
-            except TaskError as exc:
-                messagebox.showerror("Não foi possível excluir", str(exc))
-            self._refresh_tasks()
+        try:
+            self.tasks.delete_task(self.user["id"], task_id)
+        except TaskError as exc:
+            QMessageBox.warning(self, "Não foi possível excluir", str(exc))
+        self._refresh_tasks()
 
     def _manage_subtasks(self):
         task_id = self._selected_task()
         if not task_id:
-            messagebox.showinfo("Selecione uma tarefa", "Escolha uma tarefa na lista primeiro.")
-            return
+            QMessageBox.information(self, "Selecione uma tarefa", "Escolha uma tarefa na lista primeiro."); return
         task = self.tasks.get_task(self.user["id"], task_id)
-        dialog = tk.Toplevel(self)
-        dialog.title("Subtarefas")
-        dialog.geometry("560x460")
-        frame = ttk.Frame(dialog, padding=16)
-        frame.pack(fill="both", expand=True)
-        self._label(frame, task["title"], "Title.TLabel").pack(anchor="w", pady=(0, 10))
-        tree = ttk.Treeview(frame, columns=("done", "title"), show="headings", selectmode="browse")
-        tree.heading("done", text="Status")
-        tree.heading("title", text="Subtarefa")
-        tree.column("done", width=95)
-        tree.column("title", width=380)
-        tree.pack(fill="both", expand=True)
+        dialog = QDialog(self); dialog.setWindowTitle("Etapas da tarefa"); dialog.resize(640, 480)
+        layout = QVBoxLayout(dialog); layout.setContentsMargins(24, 22, 24, 22)
+        layout.addWidget(self._label(task["title"], "heading"))
+        table = self._table(["Status", "Etapa"], [125, 430]); layout.addWidget(table, 1)
+        entry_row = QHBoxLayout(); entry = QLineEdit(); entry.setPlaceholderText("Adicione uma próxima etapa")
+        entry_row.addWidget(entry, 1)
         def refresh():
-            for item in tree.get_children(): tree.delete(item)
-            for item in self.tasks.list_subtasks(self.user["id"], task_id):
-                tree.insert("", "end", iid=str(item["id"]), values=("Concluída" if item["done"] else "Pendente", item["title"]))
-        row = ttk.Frame(frame)
-        row.pack(fill="x", pady=(10, 0))
-        entry = ttk.Entry(row)
-        entry.pack(side="left", fill="x", expand=True, ipady=5)
+            table.setRowCount(0)
+            for subtask in self.tasks.list_subtasks(self.user["id"], task_id):
+                self._append_row(table, ["Concluída" if subtask["done"] else "Pendente", subtask["title"]], subtask["id"])
         def add():
             try:
-                self.tasks.add_subtask(self.user["id"], task_id, entry.get())
-                entry.delete(0, "end")
-                refresh()
-                self._refresh_tasks()
+                self.tasks.add_subtask(self.user["id"], task_id, entry.text()); entry.clear(); refresh(); self._refresh_tasks()
             except TaskError as exc:
-                messagebox.showerror("Subtarefa inválida", str(exc), parent=dialog)
-        ttk.Button(row, text="Adicionar", command=add).pack(side="left", padx=(7, 0))
+                QMessageBox.warning(dialog, "Etapa inválida", str(exc))
+        entry_row.addWidget(self._button("Adicionar", add, "primary")); layout.addLayout(entry_row)
         def toggle():
-            selected = tree.selection()
-            if not selected: return
-            item = next((x for x in self.tasks.list_subtasks(self.user["id"], task_id) if x["id"] == int(selected[0])), None)
+            row = table.currentRow()
+            if row < 0: return
+            subtask_id = table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            item = next((sub for sub in self.tasks.list_subtasks(self.user["id"], task_id) if sub["id"] == subtask_id), None)
             if item:
-                all_done = self.tasks.set_subtask_done(self.user["id"], item["id"], not bool(item["done"]))
-                if all_done:
-                    self.notifications.add(self.user["id"], f"Todas as subtarefas de {task['title']} foram concluídas.", "Task")
-                refresh()
-                self._refresh_tasks()
-                self._refresh_notifications()
-        ttk.Button(frame, text="Marcar / desmarcar conclusão", command=toggle).pack(anchor="w", pady=(8, 0))
-        refresh()
+                all_done = self.tasks.set_subtask_done(self.user["id"], subtask_id, not bool(item["done"]))
+                if all_done: self.notifications.add(self.user["id"], f"Todas as etapas de {task['title']} foram concluídas.", "Task")
+                refresh(); self._refresh_tasks(); self._refresh_notifications()
+        layout.addWidget(self._button("Marcar / desmarcar conclusão", toggle))
+        refresh(); dialog.exec()
 
-    def _manage_reminders(self):
-        task_id = self._selected_task()
-        if not task_id:
-            messagebox.showinfo("Selecione uma tarefa", "Escolha uma tarefa para configurar lembretes.")
-            return
-        task = self.tasks.get_task(self.user["id"], task_id)
-        dialog = tk.Toplevel(self)
-        dialog.title("Lembretes")
-        dialog.geometry("580x450")
-        frame = ttk.Frame(dialog, padding=16)
-        frame.pack(fill="both", expand=True)
-        self._label(frame, f"Lembretes · {task['title']}", "Title.TLabel").pack(anchor="w", pady=(0, 10))
-        tree = ttk.Treeview(frame, columns=("when", "email", "status"), show="headings")
-        for col, caption, width in (("when", "Data e hora", 190), ("email", "E-mail", 100), ("status", "Status", 120)):
-            tree.heading(col, text=caption); tree.column(col, width=width, anchor="w")
-        tree.pack(fill="both", expand=True)
-        def refresh():
-            for item in tree.get_children(): tree.delete(item)
-            for reminder in self.tasks.list_reminders(self.user["id"], task_id):
-                when = datetime.fromisoformat(reminder["scheduled_at"]).astimezone().strftime("%d/%m/%Y %H:%M")
-                tree.insert("", "end", values=(when, "Sim" if reminder["email_enabled"] else "Não", reminder["status"]))
-        self._label(frame, "Novo lembrete (DD/MM/AAAA HH:MM)", "Muted.TLabel").pack(anchor="w", pady=(12, 4))
-        when = ttk.Entry(frame)
-        when.pack(fill="x", ipady=4)
-        email_enabled = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frame, text="Também enviar por e-mail (desativado por padrão)", variable=email_enabled).pack(anchor="w", pady=6)
-        def add():
-            try:
-                local_dt = datetime.strptime(when.get().strip(), "%d/%m/%Y %H:%M").astimezone().astimezone(timezone.utc)
-                self.tasks.add_reminder(self.user["id"], task_id, local_dt, email_enabled.get())
-                when.delete(0, "end"); refresh()
-            except (ValueError, TaskError) as exc:
-                messagebox.showerror("Lembrete inválido", str(exc) if isinstance(exc, TaskError) else "Data no formato DD/MM/AAAA HH:MM.", parent=dialog)
-        ttk.Button(frame, text="Adicionar lembrete", style="Accent.TButton", command=add).pack(anchor="w", pady=(5, 0))
-        refresh()
+    def _build_focus(self, layout):
+        intro = QVBoxLayout()
+        intro.addWidget(self._label("Hora de focar", "title"))
+        intro.addWidget(self._label("Escolha uma tarefa, ajuste o tempo e avance sem distrações.", "subtitle"))
+        layout.addLayout(intro)
+        card, card_layout = self._card("Preparar sessão")
+        form = QFormLayout(); form.setVerticalSpacing(14)
+        self.focus_task = QComboBox()
+        self.focus_duration = QSpinBox(); self.focus_duration.setRange(1, 240); self.focus_duration.setValue(25); self.focus_duration.setSuffix(" min")
+        form.addRow("Tarefa", self.focus_task); form.addRow("Duração", self.focus_duration)
+        card_layout.addLayout(form)
+        controls = QHBoxLayout()
+        controls.addWidget(self._button("▶  Iniciar", self._start_focus, "primary"))
+        controls.addWidget(self._button("Pausar", self._pause_focus))
+        controls.addWidget(self._button("Retomar", self._resume_focus))
+        controls.addWidget(self._button("Encerrar", self._terminate_focus, "danger"))
+        controls.addStretch(1); card_layout.addLayout(controls)
+        layout.addWidget(card)
 
-    def _build_focus(self):
-        self._label(self.focus_page, "Sessão de foco", "Title.TLabel").pack(anchor="w")
-        self._label(self.focus_page, "Escolha uma tarefa pendente e concentre-se em uma etapa por vez.", "Muted.TLabel").pack(anchor="w", pady=(3, 18))
-        form = ttk.Frame(self.focus_page, style="Card.TFrame", padding=18)
-        form.pack(fill="x")
-        ttk.Label(form, text="Tarefa", background=WHITE).grid(row=0, column=0, sticky="w")
-        self.focus_task = ttk.Combobox(form, state="readonly", width=58)
-        self.focus_task.grid(row=1, column=0, sticky="ew", padx=(0, 15), pady=(5, 12))
-        ttk.Label(form, text="Duração (minutos)", background=WHITE).grid(row=0, column=1, sticky="w")
-        self.focus_duration = tk.Spinbox(form, from_=1, to=240, width=8)
-        self.focus_duration.delete(0, "end"); self.focus_duration.insert(0, "25")
-        self.focus_duration.grid(row=1, column=1, sticky="w", pady=(5, 12))
-        form.columnconfigure(0, weight=1)
-        buttons = ttk.Frame(form, style="Card.TFrame")
-        buttons.grid(row=2, column=0, columnspan=2, sticky="w")
-        ttk.Button(buttons, text="Iniciar", style="Accent.TButton", command=self._start_focus).pack(side="left", padx=(0, 7))
-        ttk.Button(buttons, text="Pausar", command=self._pause_focus).pack(side="left", padx=7)
-        ttk.Button(buttons, text="Retomar", command=self._resume_focus).pack(side="left", padx=7)
-        ttk.Button(buttons, text="Encerrar", command=self._terminate_focus).pack(side="left", padx=7)
-        self.focus_status = ttk.Label(self.focus_page, text="Nenhuma sessão ativa", font=("Segoe UI", 19, "bold"))
-        self.focus_status.pack(anchor="center", pady=(45, 10))
-        self.focus_progress = ttk.Progressbar(self.focus_page, mode="determinate", maximum=100)
-        self.focus_progress.pack(fill="x", padx=40)
-        self.focus_detail = ttk.Label(self.focus_page, text="", style="Muted.TLabel")
-        self.focus_detail.pack(anchor="center", pady=8)
+        timer_card = QFrame(); timer_card.setObjectName("hero")
+        timer_layout = QVBoxLayout(timer_card); timer_layout.setContentsMargins(36, 30, 36, 30); timer_layout.setSpacing(12)
+        timer_layout.addWidget(self._label("SESSÃO ATUAL", "eyebrow"), alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.focus_status = self._label("25:00", "whiteTitle")
+        self.focus_status.setStyleSheet("color:white;font-size:42pt;font-weight:750")
+        timer_layout.addWidget(self.focus_status, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.focus_detail = self._label("Nenhuma sessão ativa · duração padrão de 25 minutos", "heroText")
+        timer_layout.addWidget(self.focus_detail, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.focus_progress = QProgressBar(); self.focus_progress.setTextVisible(False); self.focus_progress.setFixedHeight(14)
+        self.focus_progress.setStyleSheet("QProgressBar{background:#28574E;border-radius:7px} QProgressBar::chunk{background:#C8E6A0;border-radius:7px}")
+        timer_layout.addWidget(self.focus_progress)
+        layout.addWidget(timer_card)
+        layout.addStretch(1)
         self._refresh_focus_tasks()
 
     def _refresh_focus_tasks(self):
-        if not hasattr(self, "focus_task"):
+        if not self.user or not hasattr(self, "focus_task"):
             return
         rows = self.tasks.list_tasks(self.user["id"], status="Pendente")
-        self._focus_rows = rows
-        self.focus_task["values"] = [f"{row['id']} · {row['title']}" for row in rows]
-        if rows and not self.focus_task.get():
-            self.focus_task.current(0)
+        current = self.focus_task.currentData()
+        self.focus_task.clear()
+        for row in rows:
+            self.focus_task.addItem(f"{row['title']}  ·  prazo {datetime.fromisoformat(row['deadline']).astimezone().strftime('%d/%m')}", row["id"])
+        if current is not None:
+            index = self.focus_task.findData(current)
+            if index >= 0: self.focus_task.setCurrentIndex(index)
 
     def _start_focus(self):
-        selection = self.focus_task.get()
-        if not selection:
-            messagebox.showinfo("Selecione uma tarefa", "Crie ou selecione uma tarefa pendente primeiro.")
-            return
+        task_id = self.focus_task.currentData()
+        if task_id is None:
+            QMessageBox.information(self, "Nenhuma tarefa pendente", "Crie ou selecione uma tarefa pendente primeiro."); return
         try:
-            task_id = int(selection.split(" · ", 1)[0])
-            session_id = self.focus.start(self.user["id"], task_id, int(self.focus_duration.get()))
-            self._refresh_history()
-        except (ValueError, FocusError) as exc:
-            messagebox.showerror("Não foi possível iniciar", str(exc))
-            return
+            session_id = self.focus.start(self.user["id"], int(task_id), self.focus_duration.value())
+        except FocusError as exc:
+            QMessageBox.warning(self, "Não foi possível iniciar", str(exc)); return
         logger.info("Sessão iniciada na interface (session_id=%s)", session_id)
         self._tick_focus()
 
     def _pause_focus(self):
-        try:
-            self.focus.pause(self.user["id"])
-        except FocusError as exc:
-            messagebox.showinfo("Sessão de foco", str(exc))
+        try: self.focus.pause(self.user["id"])
+        except FocusError as exc: QMessageBox.information(self, "Sessão de foco", str(exc))
         self._tick_focus()
 
     def _resume_focus(self):
-        try:
-            self.focus.resume(self.user["id"])
-        except FocusError as exc:
-            messagebox.showinfo("Sessão de foco", str(exc))
+        try: self.focus.resume(self.user["id"])
+        except FocusError as exc: QMessageBox.information(self, "Sessão de foco", str(exc))
         self._tick_focus()
 
     def _terminate_focus(self):
-        try:
-            self.focus.terminate(self.user["id"])
-        except FocusError as exc:
-            messagebox.showinfo("Sessão de foco", str(exc))
-        self._tick_focus()
-        self._refresh_history()
-        self._refresh_dashboard()
+        try: self.focus.terminate(self.user["id"])
+        except FocusError as exc: QMessageBox.information(self, "Sessão de foco", str(exc))
+        self._tick_focus(); self._refresh_history(); self._refresh_dashboard()
 
     def _tick_focus(self):
         if not self.user or not hasattr(self, "focus_status"):
             return
         session = self.focus.tick(self.user["id"])
         if not session:
-            self.focus_status.config(text="Nenhuma sessão ativa")
-            self.focus_detail.config(text="Duração padrão: 25 minutos")
-            self.focus_progress["value"] = 0
+            self.focus_status.setText("25:00")
+            self.focus_detail.setText("Nenhuma sessão ativa · duração padrão de 25 minutos")
+            self.focus_progress.setValue(0)
             return
-        seconds = session["elapsed_seconds"]
-        remaining = max(0, session["duration_seconds"] - seconds)
-        self.focus_status.config(text=f"{remaining // 60:02d}:{remaining % 60:02d} · {session['status']}")
-        self.focus_detail.config(text=f"{session['task_title']} · decorrido {seconds // 60:02d}:{seconds % 60:02d}")
-        self.focus_progress["value"] = min(100, 100 * seconds / session["duration_seconds"])
+        remaining = max(0, session["duration_seconds"] - session["elapsed_seconds"])
+        self.focus_status.setText(f"{remaining // 60:02d}:{remaining % 60:02d}")
+        state = "Pausada" if session["status"] == "Paused" else "Em andamento"
+        elapsed = session["elapsed_seconds"]
+        self.focus_detail.setText(f"{session['task_title']}  ·  {state}  ·  decorrido {elapsed // 60:02d}:{elapsed % 60:02d}")
+        self.focus_progress.setValue(min(100, int(100 * elapsed / session["duration_seconds"])))
         if session["status"] == "Completed":
-            self._refresh_notifications()
-            self._refresh_history()
-            self._refresh_dashboard()
+            self._refresh_notifications(); self._refresh_history(); self._refresh_dashboard()
 
-    def _build_chat(self):
-        top = ttk.Frame(self.chat_page)
-        top.pack(fill="x")
-        self._label(top, "Assistente de estudos", "Title.TLabel").pack(side="left")
-        ttk.Button(top, text="+ Nova conversa", command=self._new_conversation).pack(side="right")
-        self._label(self.chat_page, "Configure ESTUDA_AI_PROVIDER e a chave do provedor no ambiente para ativar a IA.", "Muted.TLabel").pack(anchor="w", pady=(3, 8))
-        selector = ttk.Frame(self.chat_page)
-        selector.pack(fill="x", pady=(0, 8))
-        ttk.Label(selector, text="Conversa").pack(side="left", padx=(0, 6))
-        self.conversation_box = ttk.Combobox(selector, state="readonly", width=54)
-        self.conversation_box.pack(side="left", fill="x", expand=True)
-        self.conversation_box.bind("<<ComboboxSelected>>", self._conversation_selected)
-        self.chat_log = tk.Text(self.chat_page, wrap="word", state="disabled", font=("Segoe UI", 10), bg=WHITE, relief="flat", padx=14, pady=12)
-        self.chat_log.pack(fill="both", expand=True)
-        self.chat_log.tag_configure("user", foreground=ACCENT, spacing1=8, font=("Segoe UI", 10, "bold"))
-        self.chat_log.tag_configure("assistant", foreground=INK, spacing1=8)
-        self.chat_log.tag_configure("failed", foreground="#b42318", spacing1=8)
-        compose = ttk.Frame(self.chat_page)
-        compose.pack(fill="x", pady=(10, 0))
-        self.chat_entry = ttk.Entry(compose, font=("Segoe UI", 11))
-        self.chat_entry.pack(side="left", fill="x", expand=True, ipady=7)
-        self.chat_entry.bind("<Return>", lambda _event: self._send_chat())
-        self.chat_complex = tk.BooleanVar(value=False)
-        ttk.Checkbutton(compose, text="Sugerir subtarefas", variable=self.chat_complex).pack(side="left", padx=8)
-        self.chat_send_button = ttk.Button(compose, text="Enviar", style="Accent.TButton", command=self._send_chat)
-        self.chat_send_button.pack(side="left")
-        suggestion_frame = ttk.LabelFrame(self.chat_page, text="Propostas de subtarefa · aceite para adicionar")
-        suggestion_frame.pack(fill="x", pady=(10, 0))
-        self.suggestion_tree = ttk.Treeview(suggestion_frame, columns=("title",), show="headings", height=3, selectmode="browse")
-        self.suggestion_tree.heading("title", text="Proposta")
-        self.suggestion_tree.column("title", width=500, anchor="w")
-        self.suggestion_tree.pack(side="left", fill="both", expand=True, padx=6, pady=6)
-        controls = ttk.Frame(suggestion_frame)
-        controls.pack(side="left", fill="y", padx=7)
-        self.suggestion_task = ttk.Combobox(controls, state="readonly", width=27)
-        self.suggestion_task.pack(fill="x", pady=(5, 6))
-        self.suggestion_title = ttk.Entry(controls, width=30)
-        self.suggestion_title.pack(fill="x", pady=(0, 6))
-        ttk.Button(controls, text="Aceitar / editar título", command=self._accept_suggestion).pack(fill="x", pady=2)
-        ttk.Button(controls, text="Rejeitar proposta", command=self._reject_suggestion).pack(fill="x", pady=2)
-        failures = ttk.Frame(self.chat_page)
-        failures.pack(fill="x", pady=(8, 0))
-        ttk.Label(failures, text="Mensagens com falha").pack(side="left")
-        self.failed_messages = ttk.Combobox(failures, state="readonly", width=68)
-        self.failed_messages.pack(side="left", fill="x", expand=True, padx=8)
-        ttk.Button(failures, text="Reenviar", command=self._resend_failed).pack(side="left")
+    def _build_chat(self, layout):
+        intro = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.addWidget(self._label("Estuda+", "title"))
+        title_box.addWidget(self._label("Tire dúvidas e transforme seus estudos em próximos passos.", "subtitle"))
+        intro.addLayout(title_box); intro.addStretch(1)
+        self.new_conversation_button = self._button("＋  Nova conversa", self._new_conversation, "primary")
+        intro.addWidget(self.new_conversation_button)
+        layout.addLayout(intro)
+
+        provider_name = "Gemini" if self.ai_client.__class__.__name__ == "GeminiClient" else "OpenAI"
+        if getattr(self.ai_client, "available", False):
+            connection_text = f"●  {provider_name} configurada"
+            connection_role = "chatReady"
+        else:
+            connection_text = f"○  Configure a chave de API de {provider_name} para conversar"
+            connection_role = "chatWarning"
+        self.chat_connection = self._label(connection_text, connection_role)
+        layout.addWidget(self.chat_connection)
+
+        starters = QHBoxLayout()
+        starters.addWidget(self._label("Comece por aqui", "eyebrow"))
+        starters.addWidget(self._button("Explicar um assunto", lambda: self._use_chat_prompt("Explique de forma simples este assunto: ")))
+        starters.addWidget(self._button("Montar um plano", lambda: self._use_chat_prompt("Ajude-me a montar um plano de estudos para ")))
+        starters.addWidget(self._button("Dividir um trabalho", lambda: self._use_chat_prompt("Ajude-me a dividir este trabalho em etapas: ")))
+        starters.addStretch(1)
+        layout.addLayout(starters)
+
+        convo_card, convo_layout = self._card()
+        convo_row = QHBoxLayout(); convo_row.addWidget(self._label("Conversa", "eyebrow"))
+        self.conversation_box = QComboBox(); self.conversation_box.currentIndexChanged.connect(self._conversation_selected)
+        convo_row.addWidget(self.conversation_box, 1); convo_layout.addLayout(convo_row)
+        layout.addWidget(convo_card)
+
+        chat_card, chat_layout = self._card()
+        self.chat_log = QTextBrowser(); self.chat_log.setMinimumHeight(300); self.chat_log.setOpenExternalLinks(False)
+        chat_layout.addWidget(self.chat_log, 1)
+        self.chat_status = self._label("Dica: descreva o que está estudando e onde ficou com dúvida.", "subtitle")
+        self.chat_status.setWordWrap(True)
+        chat_layout.addWidget(self.chat_status)
+        compose = QHBoxLayout()
+        self.chat_entry = QLineEdit(); self.chat_entry.setPlaceholderText("Escreva sua dúvida ou o que precisa organizar…")
+        self.chat_entry.returnPressed.connect(self._send_chat)
+        compose.addWidget(self.chat_entry, 1)
+        self.chat_complex = QCheckBox("Gerar etapas")
+        self.chat_complex.setToolTip("Peça à IA até cinco etapas que você pode revisar e adicionar como subtarefas.")
+        compose.addWidget(self.chat_complex)
+        self.chat_send_button = self._button("Enviar", self._send_chat, "primary")
+        compose.addWidget(self.chat_send_button); chat_layout.addLayout(compose)
+        layout.addWidget(chat_card, 1)
+
+        self.proposals_card, proposal_layout = self._card("Etapas sugeridas pela IA")
+        self.suggestion_table = self._table(["Proposta"], [540]); proposal_layout.addWidget(self.suggestion_table)
+        proposal_controls = QHBoxLayout()
+        self.suggestion_task = QComboBox(); self.suggestion_task.setMinimumWidth(220)
+        self.suggestion_title = QLineEdit(); self.suggestion_title.setPlaceholderText("Título editado (opcional)")
+        proposal_controls.addWidget(QLabel("Adicionar como subtarefa de")); proposal_controls.addWidget(self.suggestion_task, 1); proposal_controls.addWidget(self.suggestion_title, 1)
+        proposal_controls.addWidget(self._button("Aceitar", self._accept_suggestion, "primary")); proposal_controls.addWidget(self._button("Rejeitar", self._reject_suggestion, "danger"))
+        proposal_layout.addLayout(proposal_controls); layout.addWidget(self.proposals_card)
+        self.proposals_card.hide()
+
+        self.retry_card, retry_layout = self._card()
+        retry_row = QHBoxLayout()
+        retry_row.addWidget(self._label("Envio com falha", "eyebrow"))
+        self.failed_messages = QComboBox(); retry_row.addWidget(self.failed_messages, 1)
+        self.retry_button = self._button("Reenviar mensagem", self._resend_failed, "primary")
+        retry_row.addWidget(self.retry_button)
+        retry_layout.addLayout(retry_row); layout.addWidget(self.retry_card)
+        self.retry_card.hide()
+
+    def _use_chat_prompt(self, prompt: str):
+        self.chat_entry.setText(prompt)
+        self.chat_entry.setFocus()
+        self.chat_entry.setCursorPosition(len(prompt))
+
+    def _set_chat_status(self, text: str, role: str = "subtitle"):
+        self.chat_status.setText(text)
+        self.chat_status.setProperty("role", role)
+        self.chat_status.style().unpolish(self.chat_status)
+        self.chat_status.style().polish(self.chat_status)
+
+    def _build_chat_html(self, rows):
+        chunks = ["<div style='font-family:Segoe UI, sans-serif;color:#172B27'>"]
+        if not rows:
+            chunks.append("<div style='padding:18px;color:#71817C'>Olá! Conte qual matéria ou atividade você quer começar. Para projetos maiores, marque ‘Dividir em etapas’.</div>")
+        for row in rows:
+            is_user = row["role"] == "user"
+            name = "Você" if is_user else "Estuda+"
+            failed = is_user and row["status"] == "Failed"
+            bg = "#FFF0F0" if failed else ("#E4F2EC" if is_user else "#F5F7F4")
+            align = "right" if is_user else "left"
+            label = "Você · envio pendente/falhou — tente novamente" if failed else name
+            chunks.append(f"<div style='margin:12px 4px;text-align:{align}'><span style='font-size:10pt;font-weight:700;color:#71817C'>{label}</span><div style='display:inline-block;max-width:78%;margin-top:4px;padding:12px 15px;background:{bg};border-radius:14px;text-align:left;white-space:pre-wrap'>{html.escape(row['content'])}</div></div>")
+        chunks.append("</div>")
+        return "".join(chunks)
 
     def _load_conversations(self):
+        if not self.user or not hasattr(self, "conversation_box"):
+            return
         rows = self.chat.list_conversations(self.user["id"])
         if not rows:
-            conversation_id = self.chat.create_conversation(self.user["id"])
+            self.active_conversation_id = self.chat.create_conversation(self.user["id"])
             rows = self.chat.list_conversations(self.user["id"])
-            self.active_conversation_id = conversation_id
-        elif self.active_conversation_id not in {row["id"] for row in rows}:
-            self.active_conversation_id = rows[0]["id"]
+        ids = [row["id"] for row in rows]
+        if self.active_conversation_id not in ids:
+            self.active_conversation_id = ids[0]
         self._conversation_rows = rows
-        self.conversation_box["values"] = [f"{row['id']} · {row['title']}" for row in rows]
-        current = next((f"{row['id']} · {row['title']}" for row in rows if row["id"] == self.active_conversation_id), "")
-        self.conversation_box.set(current)
-        self._load_messages()
-        self._load_suggestions()
+        self.conversation_box.blockSignals(True); self.conversation_box.clear()
+        for row in rows:
+            self.conversation_box.addItem(f"{row['title']}  ·  #{row['id']}", row["id"])
+        index = self.conversation_box.findData(self.active_conversation_id)
+        self.conversation_box.setCurrentIndex(index); self.conversation_box.blockSignals(False)
+        self._load_messages(); self._load_suggestions()
 
     def _new_conversation(self):
+        if not self.user: return
         self.active_conversation_id = self.chat.create_conversation(self.user["id"])
         self._load_conversations()
+        self.chat_entry.setFocus()
 
-    def _conversation_selected(self, _event=None):
-        try:
-            self.active_conversation_id = int(self.conversation_box.get().split(" · ", 1)[0])
-        except ValueError:
+    def _conversation_selected(self, index):
+        if index < 0 or not hasattr(self, "conversation_box"):
             return
-        self._load_messages()
-        self._load_suggestions()
+        conversation_id = self.conversation_box.currentData()
+        if conversation_id is None: return
+        self.active_conversation_id = int(conversation_id)
+        self._load_messages(); self._load_suggestions()
 
     def _load_messages(self):
         if not self.user or not self.active_conversation_id or not hasattr(self, "chat_log"):
             return
         rows = self.chat.messages(self.user["id"], self.active_conversation_id)
-        self.chat_log.config(state="normal")
-        self.chat_log.delete("1.0", "end")
-        if not rows:
-            self.chat_log.insert("end", "Assistente\n", "assistant")
-            self.chat_log.insert("end", "Olá! Conte qual matéria ou atividade você quer começar. Também pode marcar ‘Sugerir subtarefas’ para dividir uma tarefa complexa.\n\n", "assistant")
-        for row in rows:
-            if row["role"] == "user":
-                who = "Você"
-                tag = "failed" if row["status"] == "Failed" else "user"
-                suffix = " · falhou, você pode reenviar" if row["status"] == "Failed" else ""
-            else:
-                who, tag, suffix = "Assistente", "assistant", ""
-            self.chat_log.insert("end", who + suffix + "\n", tag)
-            self.chat_log.insert("end", row["content"] + "\n\n", tag)
-        self.chat_log.config(state="disabled")
-        self.chat_log.see("end")
+        self.chat_log.setHtml(self._build_chat_html(rows))
+        self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
         failed = [row for row in rows if row["role"] == "user" and row["status"] == "Failed"]
         self._failed_rows = failed
-        self.failed_messages["values"] = [f"{row['id']} · {row['content'][:65]}" for row in failed]
-        self.failed_messages.set(f"{failed[-1]['id']} · {failed[-1]['content'][:65]}" if failed else "")
+        self.failed_messages.clear()
+        for row in failed:
+            self.failed_messages.addItem(f"{row['content'][:75]}  ·  #{row['id']}", row["id"])
+        self.retry_card.setVisible(bool(failed))
 
     def _load_suggestions(self):
-        if not self.user or not self.active_conversation_id or not hasattr(self, "suggestion_tree"):
+        if not self.user or not self.active_conversation_id or not hasattr(self, "suggestion_table"):
             return
-        for item in self.suggestion_tree.get_children(): self.suggestion_tree.delete(item)
-        suggestions = self.chat.list_suggestions(self.user["id"], self.active_conversation_id)
-        self._suggestion_rows = suggestions
-        for row in suggestions:
-            self.suggestion_tree.insert("", "end", iid=str(row["id"]), values=(row["title"],))
+        rows = self.chat.list_suggestions(self.user["id"], self.active_conversation_id)
+        self._suggestion_rows = rows
+        self.suggestion_table.setRowCount(0)
+        for row in rows:
+            self._append_row(self.suggestion_table, [row["title"]], row["id"])
         tasks = self.tasks.list_tasks(self.user["id"], status="Pendente")
-        self._suggestion_task_rows = tasks
-        self.suggestion_task["values"] = [f"{row['id']} · {row['title']}" for row in tasks]
-        if tasks and not self.suggestion_task.get():
-            self.suggestion_task.current(0)
+        selected = self.suggestion_task.currentData()
+        self.suggestion_task.clear()
+        for task in tasks:
+            self.suggestion_task.addItem(task["title"], task["id"])
+        self.proposals_card.setVisible(bool(rows))
+        if selected is not None:
+            index = self.suggestion_task.findData(selected)
+            if index >= 0: self.suggestion_task.setCurrentIndex(index)
 
     def _send_chat(self):
-        content = self.chat_entry.get().strip()
+        content = self.chat_entry.text().strip()
         if not content or not self.active_conversation_id:
             return
-        self.chat_entry.delete(0, "end")
-        self.chat_send_button.config(state="disabled")
-        self.chat_log.config(state="normal")
-        self.chat_log.insert("end", "Você\n" + content + "\n\n", "user")
-        self.chat_log.insert("end", "Assistente\nRespondendo…\n\n", "assistant")
-        self.chat_log.config(state="disabled")
-        args = (dict(self.user), self.active_conversation_id, content, self.chat_complex.get())
-        threading.Thread(target=self._chat_worker, args=args, daemon=True).start()
+        existing = self.chat.messages(self.user["id"], self.active_conversation_id)
+        previous_message_id = max((row["id"] for row in existing), default=0)
+        self.chat_entry.clear()
+        self._start_chat_worker(content=content, previous_message_id=previous_message_id)
 
-    def _chat_worker(self, user, conversation_id, content, complex_task):
-        try:
-            result = self.chat.send(user, conversation_id, content, complex_task)
-            self.worker_queue.put(("chat_success", result))
-        except (ChatError, AIUnavailable) as exc:
-            self.worker_queue.put(("chat_error", str(exc)))
-        finally:
-            self.worker_queue.put(("chat_finished", None))
+    def _start_chat_worker(self, content=None, message_id=None, previous_message_id=0):
+        worker = ChatWorker(self.chat, dict(self.user), self.active_conversation_id, content,
+                            self.chat_complex.isChecked(), message_id, previous_message_id)
+        self.chat_workers.add(worker)
+        worker.succeeded.connect(self._chat_succeeded)
+        worker.failed.connect(self._chat_failed)
+        worker.finished.connect(self._chat_finished)
+        self.chat_entry.setEnabled(False)
+        self.chat_complex.setEnabled(False)
+        self.chat_send_button.setEnabled(False)
+        self.retry_button.setEnabled(False)
+        self.conversation_box.setEnabled(False)
+        self.new_conversation_button.setEnabled(False)
+        self._set_chat_status("Enviando sua mensagem…")
+        worker.start()
+
+    def _chat_succeeded(self, _result, conversation_id):
+        if self.active_conversation_id == conversation_id:
+            self._load_messages(); self._load_suggestions()
+            self._set_chat_status("Resposta recebida. Pode continuar a conversa.", "chatReady")
+        self._refresh_dashboard()
+
+    def _chat_failed(self, message, conversation_id, content, message_id, previous_message_id):
+        if self.active_conversation_id != conversation_id:
+            return
+        self._load_messages()
+        rows = self.chat.messages(self.user["id"], conversation_id)
+        registered = (any(row["id"] == message_id for row in rows) if message_id else
+                      any(row["id"] > previous_message_id and row["role"] == "user"
+                          and row["content"] == content for row in rows))
+        if content and not registered and not self.chat_entry.text().strip():
+            self.chat_entry.setText(content)
+            self._set_chat_status(f"A mensagem não foi registrada e voltou para o campo. {message}", "chatError")
+        elif registered:
+            self._set_chat_status(f"A mensagem ficou salva para reenvio. {message}", "chatError")
+        else:
+            self._set_chat_status(message, "chatError")
+
+    @Slot()
+    def _chat_finished(self):
+        worker = self.sender()
+        if not isinstance(worker, ChatWorker):
+            return
+        self.chat_workers.discard(worker)
+        self.chat_entry.setEnabled(True)
+        self.chat_complex.setEnabled(True)
+        self.chat_send_button.setEnabled(True)
+        self.retry_button.setEnabled(True)
+        self.conversation_box.setEnabled(True)
+        self.new_conversation_button.setEnabled(True)
+        self.chat_entry.setFocus()
 
     def _resend_failed(self):
-        if not self.failed_messages.get():
-            messagebox.showinfo("Sem mensagens com falha", "Não há mensagem para reenviar nesta conversa.")
-            return
-        try:
-            message_id = int(self.failed_messages.get().split(" · ", 1)[0])
-        except ValueError:
-            return
-        threading.Thread(target=self._resend_worker, args=(dict(self.user), message_id), daemon=True).start()
-
-    def _resend_worker(self, user, message_id):
-        try:
-            self.chat.resend(user, message_id, self.chat_complex.get())
-            self.worker_queue.put(("chat_success", None))
-        except (ChatError, AIUnavailable) as exc:
-            self.worker_queue.put(("chat_error", str(exc)))
+        message_id = self.failed_messages.currentData()
+        if message_id is None:
+            QMessageBox.information(self, "Sem mensagens com falha", "Não há mensagens para reenviar nesta conversa."); return
+        previous_message_id = max((row["id"] for row in self.chat.messages(
+            self.user["id"], self.active_conversation_id)), default=0)
+        self._start_chat_worker(message_id=int(message_id), previous_message_id=previous_message_id)
 
     def _accept_suggestion(self):
-        selected = self.suggestion_tree.selection()
-        target = self.suggestion_task.get()
-        if not selected or not target:
-            messagebox.showinfo("Escolha a proposta e a tarefa", "Selecione uma proposta e uma tarefa pendente.")
-            return
-        suggestion_id, task_id = int(selected[0]), int(target.split(" · ", 1)[0])
-        title = self.suggestion_title.get().strip() or None
+        row = self.suggestion_table.currentRow()
+        task_id = self.suggestion_task.currentData()
+        if row < 0 or task_id is None:
+            QMessageBox.information(self, "Selecione uma proposta", "Escolha uma proposta e uma tarefa pendente."); return
+        suggestion_id = self.suggestion_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         try:
-            self.chat.accept_suggestion(self.user["id"], suggestion_id, task_id, title)
+            self.chat.accept_suggestion(self.user["id"], int(suggestion_id), int(task_id), self.suggestion_title.text().strip() or None)
         except (ChatError, TaskError) as exc:
-            messagebox.showerror("Não foi possível adicionar", str(exc))
-            return
-        self.suggestion_title.delete(0, "end")
-        self._load_suggestions(); self._refresh_tasks()
+            QMessageBox.warning(self, "Não foi possível adicionar", str(exc)); return
+        self.suggestion_title.clear(); self._load_suggestions(); self._refresh_tasks()
 
     def _reject_suggestion(self):
-        selected = self.suggestion_tree.selection()
-        if not selected:
-            return
+        row = self.suggestion_table.currentRow()
+        if row < 0: return
+        suggestion_id = self.suggestion_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         try:
-            self.chat.reject_suggestion(self.user["id"], int(selected[0]))
+            self.chat.reject_suggestion(self.user["id"], int(suggestion_id))
         except ChatError as exc:
-            messagebox.showerror("Proposta", str(exc))
+            QMessageBox.warning(self, "Proposta", str(exc))
         self._load_suggestions()
 
-    def _build_notifications(self):
-        toolbar = ttk.Frame(self.notifications_page)
-        toolbar.pack(fill="x")
-        self._label(toolbar, "Notificações", "Title.TLabel").pack(side="left")
-        ttk.Button(toolbar, text="Marcar todas como lidas", command=self._mark_all_read).pack(side="right")
-        self.notification_tree = ttk.Treeview(self.notifications_page, columns=("status", "message", "date"), show="headings")
-        for col, title, width in (("status", "Leitura", 110), ("message", "Aviso", 560), ("date", "Data", 180)):
-            self.notification_tree.heading(col, text=title); self.notification_tree.column(col, width=width, anchor="w")
-        self.notification_tree.pack(fill="both", expand=True, pady=12)
-        ttk.Button(self.notifications_page, text="Marcar selecionada como lida", command=self._mark_notification_read).pack(anchor="w")
+    def _build_notifications(self, layout):
+        top = QHBoxLayout()
+        title = QVBoxLayout(); title.addWidget(self._label("Central de avisos", "title")); title.addWidget(self._label("Lembretes e atualizações do seu espaço de estudo.", "subtitle"))
+        top.addLayout(title); top.addStretch(1); top.addWidget(self._button("Marcar todas como lidas", self._mark_all_read))
+        layout.addLayout(top)
+        card, card_layout = self._card("Notificações")
+        self.notification_table = self._table(["Leitura", "Aviso", "Data"], [130, 600, 180])
+        card_layout.addWidget(self.notification_table, 1)
+        card_layout.addWidget(self._button("Marcar selecionada como lida", self._mark_notification_read))
+        layout.addWidget(card, 1)
 
     def _refresh_notifications(self):
-        if not self.user or not hasattr(self, "notification_tree"):
+        if not self.user or not hasattr(self, "notification_table"):
             return
-        for item in self.notification_tree.get_children(): self.notification_tree.delete(item)
         rows = self.notifications.list_notifications(self.user["id"])
+        self.notification_table.setRowCount(0)
         for row in rows:
             status = "Não lida" if not row["read_at"] else "Lida"
             try: date = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00")).astimezone().strftime("%d/%m/%Y %H:%M")
             except ValueError: date = row["created_at"]
-            self.notification_tree.insert("", "end", iid=str(row["id"]), values=(status, row["message"], date))
+            self._append_row(self.notification_table, [status, row["message"], date], row["id"])
         unread = sum(not row["read_at"] for row in rows)
-        if hasattr(self, "header_notifications"):
-            self.header_notifications.config(text=f"Notificações ({unread})")
+        self.header_notifications.setText(f"Notificações  ·  {unread}")
 
     def _mark_notification_read(self):
-        selection = self.notification_tree.selection()
-        if selection:
-            self.notifications.mark_read(self.user["id"], int(selection[0]))
-            self._refresh_notifications()
+        row = self.notification_table.currentRow()
+        if row < 0: return
+        notification_id = self.notification_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        self.notifications.mark_read(self.user["id"], int(notification_id)); self._refresh_notifications()
 
     def _mark_all_read(self):
-        self.notifications.mark_read(self.user["id"])
-        self._refresh_notifications()
+        self.notifications.mark_read(self.user["id"]); self._refresh_notifications()
 
-    def _build_history(self):
-        top = ttk.Frame(self.history_page)
-        top.pack(fill="x")
-        self._label(top, "Histórico de atividade", "Title.TLabel").pack(side="left")
-        self.history_period = ttk.Combobox(top, values=("7 dias", "30 dias", "Todo o período"), state="readonly", width=18)
-        self.history_period.set("30 dias")
-        self.history_period.pack(side="right")
-        self.history_period.bind("<<ComboboxSelected>>", lambda _e: self._refresh_history())
-        self._label(self.history_page, "Tarefas", "Section.TLabel").pack(anchor="w", pady=(14, 6))
-        self.task_history = ttk.Treeview(self.history_page, columns=("title", "status", "deadline", "completed"), show="headings", height=8)
-        for col, caption, width in (("title", "Tarefa", 330), ("status", "Status", 120), ("deadline", "Prazo", 160), ("completed", "Concluída em", 170)):
-            self.task_history.heading(col, text=caption); self.task_history.column(col, width=width, anchor="w")
-        self.task_history.pack(fill="both", expand=True)
-        self._label(self.history_page, "Sessões de foco", "Section.TLabel").pack(anchor="w", pady=(14, 6))
-        self.focus_history = ttk.Treeview(self.history_page, columns=("task", "status", "start", "duration"), show="headings", height=7)
-        for col, caption, width in (("task", "Tarefa", 330), ("status", "Status", 120), ("start", "Iniciada em", 180), ("duration", "Tempo efetivo", 140)):
-            self.focus_history.heading(col, text=caption); self.focus_history.column(col, width=width, anchor="w")
-        self.focus_history.pack(fill="both", expand=True)
-        self._refresh_history()
+    def _build_history(self, layout):
+        top = QHBoxLayout()
+        title = QVBoxLayout(); title.addWidget(self._label("Seu histórico", "title")); title.addWidget(self._label("Acompanhe o que você concluiu e o tempo dedicado.", "subtitle"))
+        top.addLayout(title); top.addStretch(1)
+        self.history_period = QComboBox(); self.history_period.addItems(("7 dias", "30 dias", "Todo o período")); self.history_period.setCurrentText("30 dias")
+        self.history_period.currentTextChanged.connect(lambda _value: self._refresh_history())
+        top.addWidget(QLabel("Período")); top.addWidget(self.history_period); layout.addLayout(top)
+        task_card, task_layout = self._card("Tarefas")
+        self.task_history = self._table(["Tarefa", "Status", "Prazo", "Concluída em"], [380, 140, 190, 190])
+        task_layout.addWidget(self.task_history, 1); layout.addWidget(task_card, 1)
+        focus_card, focus_layout = self._card("Sessões de foco")
+        self.focus_history = self._table(["Tarefa", "Status", "Iniciada em", "Tempo efetivo"], [380, 140, 190, 180])
+        focus_layout.addWidget(self.focus_history, 1); layout.addWidget(focus_card, 1)
 
     def _refresh_history(self):
         if not self.user or not hasattr(self, "task_history"):
             return
-        for item in self.task_history.get_children(): self.task_history.delete(item)
-        period = self.history_period.get() if hasattr(self, "history_period") else "Todo o período"
+        period = self.history_period.currentText() if hasattr(self, "history_period") else "Todo o período"
         date_filter = ""
         if period == "7 dias": date_filter = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         elif period == "30 dias": date_filter = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
         with self.database.connection() as db:
-            query = "SELECT * FROM tasks WHERE user_id=?"
-            params = [self.user["id"]]
-            if date_filter:
-                query += " AND (completed_at>=? OR status='Pendente')"; params.append(date_filter)
+            query = "SELECT * FROM tasks WHERE user_id=?"; params = [self.user["id"]]
+            if date_filter: query += " AND (completed_at>=? OR status='Pendente')"; params.append(date_filter)
             tasks = db.execute(query + " ORDER BY COALESCE(completed_at,deadline) DESC", params).fetchall()
+        self.task_history.setRowCount(0)
         for task in tasks:
             due = datetime.fromisoformat(task["deadline"]).astimezone().strftime("%d/%m/%Y %H:%M")
             completed = datetime.fromisoformat(task["completed_at"]).astimezone().strftime("%d/%m/%Y %H:%M") if task["completed_at"] else "—"
-            self.task_history.insert("", "end", values=(task["title"], task["status"], due, completed))
-        for item in self.focus_history.get_children(): self.focus_history.delete(item)
+            self._append_row(self.task_history, [task["title"], task["status"], due, completed])
+        self.focus_history.setRowCount(0)
         for session in self.focus.history(self.user["id"], period):
-            start = datetime.fromisoformat(session["started_at"]).astimezone().strftime("%d/%m/%Y %H:%M")
-            secs = session["effective_seconds"]
-            self.focus_history.insert("", "end", values=(session["task_title"], session["status"], start, f"{secs // 60} min {secs % 60} s"))
+            started = datetime.fromisoformat(session["started_at"]).astimezone().strftime("%d/%m/%Y %H:%M")
+            seconds = session["effective_seconds"]
+            self._append_row(self.focus_history, [session["task_title"], session["status"], started, f"{seconds // 60} min {seconds % 60} s"])
 
-    def _build_account(self):
-        self._label(self.account_page, "Conta e privacidade", "Title.TLabel").pack(anchor="w", pady=(0, 12))
-        self._label(self.account_page, f"Nome: {self.user['name']}\nE-mail: {self.user['email']}\nPerfil: {'Administrador' if self.user['role'] == 'admin' else 'Estudante'}", "Muted.TLabel", justify="left").pack(anchor="w")
-        policy = ("Este aplicativo guarda nome, e-mail, tarefas, mensagens e sessões no banco local deste computador. "
-                  "Quando configurado, o texto da conversa (com nome e e-mail identificáveis removidos) é enviado ao provedor de IA; "
-                  "o envio de e-mail só ocorre para recuperação e lembretes explicitamente marcados. A exclusão da conta apaga seus dados locais.")
-        ttk.Label(self.account_page, text=policy, wraplength=760, justify="left").pack(anchor="w", pady=20)
-        ttk.Button(self.account_page, text="Excluir minha conta…", command=self._delete_account).pack(anchor="w")
+    def _build_account(self, layout):
+        layout.addWidget(self._label("Conta e privacidade", "title"))
+        profile, profile_layout = self._card("Seu perfil")
+        profile_layout.addWidget(self._label(f"{self.user['name']}\n{self.user['email']}\nPerfil: {'Administrador' if self.user['role'] == 'admin' else 'Estudante'}", "subtitle"))
+        layout.addWidget(profile)
+        privacy, privacy_layout = self._card("Seus dados")
+        policy = ("Nome, e-mail, tarefas, mensagens e sessões ficam no banco local deste computador. "
+                  "Quando configurado, o texto do chat (com nome e e-mail identificáveis removidos) é enviado ao provedor de IA. "
+                  "O e-mail só é enviado para recuperação de conta ou lembretes explicitamente ativados.")
+        privacy_layout.addWidget(self._label(policy, "subtitle")); layout.addWidget(privacy)
+        layout.addWidget(self._button("Excluir minha conta…", self._delete_account, "danger"), alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addStretch(1)
 
     def _delete_account(self):
-        if not messagebox.askyesno("Excluir conta permanentemente", "Esta ação apagará permanentemente suas tarefas, conversas, mensagens, notificações e sessões de foco. Deseja continuar?"):
+        answer = QMessageBox.question(self, "Excluir conta permanentemente", "Esta ação apagará tarefas, conversas, mensagens, notificações e sessões de foco. Deseja continuar?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
             return
         try:
             self.auth.delete_account(self.user["id"], confirmed=True)
         except AuthenticationError as exc:
-            messagebox.showerror("Não foi possível excluir", str(exc))
-            return
-        self.user = None
-        self.show_auth()
-        messagebox.showinfo("Conta excluída", "Sua conta e seus dados foram removidos deste computador.")
+            QMessageBox.warning(self, "Não foi possível excluir", str(exc)); return
+        self.logout(); QMessageBox.information(self, "Conta excluída", "Sua conta e seus dados foram removidos deste computador.")
 
-    def _build_admin(self):
-        self._label(self.admin_page, "Configurações do assistente", "Title.TLabel").pack(anchor="w", pady=(0, 12))
+    def _build_admin(self, layout):
+        layout.addWidget(self._label("Configurações do assistente", "title"))
+        card, card_layout = self._card("Disponibilidade e limite diário")
         settings = self.auth.get_settings()
-        self.ai_enabled_var = tk.BooleanVar(value=bool(settings["ai_enabled"]))
-        ttk.Checkbutton(self.admin_page, text="Habilitar o assistente de IA para estudantes", variable=self.ai_enabled_var).pack(anchor="w", pady=6)
-        row = ttk.Frame(self.admin_page)
-        row.pack(anchor="w", pady=8)
-        ttk.Label(row, text="Máximo de respostas do assistente por usuário por dia").pack(side="left", padx=(0, 10))
-        self.ai_limit = tk.Spinbox(row, from_=1, to=500, width=7)
-        self.ai_limit.delete(0, "end"); self.ai_limit.insert(0, str(settings["daily_message_limit"]))
-        self.ai_limit.pack(side="left")
-        ttk.Button(self.admin_page, text="Salvar configurações", style="Accent.TButton", command=self._save_admin_settings).pack(anchor="w", pady=10)
-        self._label(self.admin_page, "Credenciais de IA e e-mail são configuradas no ambiente, nunca salvas no código ou no banco.", "Muted.TLabel", wraplength=720).pack(anchor="w", pady=6)
+        self.ai_enabled_check = QCheckBox("Habilitar o assistente de IA para estudantes")
+        self.ai_enabled_check.setChecked(bool(settings["ai_enabled"]))
+        card_layout.addWidget(self.ai_enabled_check)
+        row = QHBoxLayout(); row.addWidget(QLabel("Máximo de respostas por pessoa por dia"))
+        self.ai_limit = QSpinBox(); self.ai_limit.setRange(1, 500); self.ai_limit.setValue(settings["daily_message_limit"]); row.addWidget(self.ai_limit); row.addStretch(1)
+        card_layout.addLayout(row); card_layout.addWidget(self._button("Salvar configurações", self._save_admin_settings, "primary"))
+        layout.addWidget(card)
+        note, note_layout = self._card("Segurança")
+        note_layout.addWidget(self._label("Chaves da IA e credenciais de e-mail devem ser configuradas no ambiente, nunca no código ou no banco.", "subtitle"))
+        layout.addWidget(note); layout.addStretch(1)
 
     def _save_admin_settings(self):
         try:
-            self.auth.update_ai_settings(self.user["id"], self.ai_enabled_var.get(), int(self.ai_limit.get()))
+            self.auth.update_ai_settings(self.user["id"], self.ai_enabled_check.isChecked(), self.ai_limit.value())
         except (ValueError, AuthenticationError) as exc:
-            messagebox.showerror("Configuração inválida", str(exc))
-            return
-        messagebox.showinfo("Configurações salvas", "Os limites do assistente foram atualizados.")
+            QMessageBox.warning(self, "Configuração inválida", str(exc)); return
+        QMessageBox.information(self, "Configurações salvas", "Os limites do assistente foram atualizados.")
 
-
-
+    def _manage_reminders(self):
+        task_id = self._selected_task()
+        if not task_id:
+            QMessageBox.information(self, "Selecione uma tarefa", "Escolha uma tarefa para configurar lembretes."); return
+        task = self.tasks.get_task(self.user["id"], task_id)
+        dialog = QDialog(self); dialog.setWindowTitle("Lembretes"); dialog.resize(620, 500)
+        layout = QVBoxLayout(dialog); layout.setContentsMargins(24, 22, 24, 22)
+        layout.addWidget(self._label(f"Lembretes · {task['title']}", "heading"))
+        table = self._table(["Data e hora", "E-mail", "Status"], [210, 100, 160]); layout.addWidget(table, 1)
+        layout.addWidget(self._label("Novo lembrete", "eyebrow"))
+        when = QDateTimeEdit(QDateTime.currentDateTime().addSecs(3600)); when.setCalendarPopup(True); when.setDisplayFormat("dd/MM/yyyy HH:mm")
+        layout.addWidget(when)
+        email = QCheckBox("Também enviar por e-mail (opcional)")
+        layout.addWidget(email)
+        def refresh():
+            table.setRowCount(0)
+            for reminder in self.tasks.list_reminders(self.user["id"], task_id):
+                due = datetime.fromisoformat(reminder["scheduled_at"]).astimezone().strftime("%d/%m/%Y %H:%M")
+                self._append_row(table, [due, "Sim" if reminder["email_enabled"] else "Não", reminder["status"]])
+        def add():
+            try:
+                due = datetime.fromisoformat(when.dateTime().toString(Qt.DateFormat.ISODate)).astimezone(timezone.utc)
+                self.tasks.add_reminder(self.user["id"], task_id, due, email.isChecked())
+                refresh()
+            except (ValueError, TaskError) as exc:
+                QMessageBox.warning(dialog, "Lembrete inválido", str(exc) if isinstance(exc, TaskError) else "Informe uma data válida.")
+        layout.addWidget(self._button("Adicionar lembrete", add, "primary"))
+        refresh(); dialog.exec()

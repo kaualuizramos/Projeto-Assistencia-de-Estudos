@@ -1,14 +1,15 @@
 # Estuda+ — aplicativo desktop de assistência de estudos
 
-Aplicação local para Windows/PC, desenvolvida em Python com Tkinter e SQLite. O banco preserva tarefas, subtarefas, conversas, notificações e sessões entre execuções. O aplicativo não é uma aplicação web.
+Aplicação desktop local para Windows/PC, desenvolvida em Python com **PySide6 (Qt Widgets)** e SQLite. O banco preserva tarefas, subtarefas, conversas, notificações e sessões entre execuções. A interface é nativa para desktop e não é uma aplicação web.
 
 ## Executar
 
 1. Abra a pasta do repositório no PyCharm e selecione o ambiente `.venv` já criado.
-2. Execute `app.py` ou, no terminal do projeto, `python app.py`.
-3. Crie sua conta na tela inicial. A senha deve ter ao menos 8 caracteres.
+2. No terminal do projeto, instale a dependência gráfica com `python -m pip install -r requirements.txt`.
+3. Execute `app.py` ou, no terminal do projeto, `python app.py`.
+4. Crie sua conta na tela inicial. A senha deve ter ao menos 8 caracteres.
 
-Não há dependências Python adicionais: a aplicação usa a biblioteca padrão. Os testes podem ser executados com `python -m unittest discover -s tests -v`.
+Os testes podem ser executados com `python -m unittest discover -s tests -v`.
 
 ## Funcionalidades
 

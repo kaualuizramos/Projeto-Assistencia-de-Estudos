@@ -3,6 +3,9 @@
 import logging
 from pathlib import Path
 
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QApplication
+
 from estuda.database import Database
 from estuda.ui import StudyWindow
 
@@ -15,7 +18,12 @@ def main() -> None:
     )
     database = Database(Path(__file__).with_name("assistente_estudos.db"))
     database.initialize()
-    StudyWindow(database).mainloop()
+    application = QApplication([])
+    application.setApplicationName("Estuda+")
+    application.setFont(QFont("Segoe UI", 10))
+    window = StudyWindow(database)
+    window.show()
+    application.exec()
 
 
 if __name__ == "__main__":

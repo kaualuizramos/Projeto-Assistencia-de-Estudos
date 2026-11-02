@@ -110,10 +110,16 @@ class AIChatService:
             conversation_id, original_content = row["conversation_id"], row["content"]
         # Preserve the original record and append no duplicate user message on retry.
         settings = self.auth.get_settings()
-        if not settings["ai_enabled"] or not self.client.available:
+        if not settings["ai_enabled"]:
             with self.database.connection() as db:
                 db.execute("UPDATE messages SET status='Failed' WHERE id=?", (message_id,))
-            raise AIUnavailable("O serviço de IA está temporariamente indisponível.")
+            raise ChatError("O assistente de IA está desativado pelo administrador.")
+        if not self.client.available:
+            with self.database.connection() as db:
+                db.execute("UPDATE messages SET status='Failed' WHERE id=?", (message_id,))
+            if self.client.__class__.__name__ == "GeminiClient":
+                raise AIUnavailable("Assistente indisponível: configure GEMINI_API_KEY no ambiente.")
+            raise AIUnavailable("Assistente indisponível: configure OPENAI_API_KEY no ambiente.")
         with self.database.connection() as db:
             self._owned_conversation(db, user["id"], conversation_id)
             rows = db.execute("SELECT role,content FROM messages WHERE user_id=? AND conversation_id=? AND status IN ('Sent','Pending') ORDER BY id DESC LIMIT 20", (user["id"], conversation_id)).fetchall()
@@ -125,19 +131,28 @@ class AIChatService:
         context = [{"role": row["role"], "content": self._sanitize(row["content"], user)} for row in reversed(rows)]
         try:
             result = self.client.respond(context, complex_task=complex_task or self._looks_complex(original_content))
+            response = result.get("response") if isinstance(result, dict) else None
+            suggestions = result.get("subtasks") if isinstance(result, dict) else None
+            if (not isinstance(response, str) or not response.strip()
+                    or not isinstance(suggestions, list) or len(suggestions) > 5
+                    or any(not isinstance(item, str) or not item.strip() or len(item.strip()) > 120
+                           for item in suggestions)):
+                raise AIUnavailable("O serviço de IA retornou uma resposta fora do formato esperado.")
         except Exception as exc:
             with self.database.connection() as db:
                 db.execute("UPDATE messages SET status='Failed' WHERE id=?", (message_id,))
             logger.warning("Reenvio à IA falhou (user_id=%s error=%s)", user["id"], type(exc).__name__)
+            if isinstance(exc, (AIUnavailable, ChatError)):
+                raise
             raise AIUnavailable("O serviço de IA está temporariamente indisponível.") from exc
         with self.database.connection() as db:
             db.execute("UPDATE messages SET status='Sent' WHERE id=?", (message_id,))
             db.execute("INSERT INTO messages(user_id,conversation_id,role,content,status) VALUES(?,?,'assistant',?,'Sent')",
-                       (user["id"], conversation_id, result["response"]))
-            for title in result["subtasks"]:
+                       (user["id"], conversation_id, response.strip()))
+            for title in suggestions:
                 if isinstance(title, str) and title.strip() and len(title.strip()) <= 120:
                     db.execute("INSERT INTO suggestions(user_id,conversation_id,title) VALUES(?,?,?)", (user["id"], conversation_id, title.strip()))
-        return result
+        return {"response": response.strip(), "subtasks": suggestions, "message_id": message_id}
 
     def list_suggestions(self, user_id: int, conversation_id: int) -> list[dict]:
         with self.database.connection() as db:

@@ -209,13 +209,16 @@ class ServiceCase(unittest.TestCase):
     def test_chat_failure_is_persisted_and_can_be_resent(self):
         conversation_id = self.chat_conversation()
         preserved_task = self.tasks.create_task(self.user_id, "Persistir mesmo sem IA", future())
-        failing = FakeAI(error=AIUnavailable("temporariamente indisponível"))
+        failing = FakeAI(error=AIUnavailable("Gemini API respondeu HTTP 503. Tente novamente."))
         service = AIChatService(self.db, failing, self.auth, self.tasks)
         with self.assertRaises(AIUnavailable):
             service.send(self.user, conversation_id, "Ajude a começar")
         rows = service.messages(self.user_id, conversation_id)
         self.assertEqual(rows[0]["status"], "Failed")
         self.assertEqual(self.tasks.get_task(self.user_id, preserved_task)["title"], "Persistir mesmo sem IA")
+        with self.assertRaisesRegex(AIUnavailable, "HTTP 503"):
+            service.resend(self.user, rows[0]["id"])
+        self.assertEqual(service.messages(self.user_id, conversation_id)[0]["status"], "Failed")
         service.client = FakeAI()
         result = service.resend(self.user, rows[0]["id"])
         self.assertIn("response", result)
