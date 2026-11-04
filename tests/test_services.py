@@ -1,16 +1,23 @@
 """Testes de regras de negócio sem GUI, rede ou uso do banco pessoal local."""
 
 import hashlib
+import json
 import os
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from estuda.ai_chat import AIChatService, ChatError
 from estuda.authentication import AuthenticationError, AuthenticationService
 from estuda.database import Database
 from estuda.focus_sessions import FocusError, FocusSessionsService
-from estuda.integrations.ai import AIUnavailable, OpenAIResponsesClient
+from estuda.integrations.ai import (
+    AIUnavailable,
+    GeminiClient,
+    OllamaClient,
+    OpenAIResponsesClient,
+    create_ai_client,
+)
 from estuda.notifications import NotificationsService
 from estuda.tasks import TaskError, TasksService
 
@@ -105,6 +112,7 @@ class ServiceCase(unittest.TestCase):
             self.tasks.create_task(self.user_id, "x" * 121, due)
         with self.assertRaises(TaskError):
             self.tasks.create_task(self.user_id, "Prazo antigo", datetime.now(timezone.utc) - timedelta(seconds=1))
+        self.edit_task_id = task_id
         self.tasks.edit_task(self.user_id, task_id, "Química orgânica", future(), "Alta", "Resumo")
         subtask_id = self.tasks.add_subtask(self.user_id, task_id, "Ler as anotações")
         with self.assertRaisesRegex(TaskError, "1 subtarefa"):
@@ -276,6 +284,54 @@ class MigrationAndAdapterTests(unittest.TestCase):
         self.assertTrue(client.available)
         self.assertEqual(client._extract_text({"output": [{"type": "message", "content": [{"type": "output_text", "text": "resposta"}]}]}), "resposta")
         self.assertFalse(OpenAIResponsesClient(api_key="").available)
+
+    @patch("urllib.request.urlopen")
+    def test_ollama_client_respond(self, mock_urlopen):
+        client = OllamaClient(host="http://localhost:11434", model="llama3.2")
+        self.assertTrue(client.available)
+        self.assertEqual(client.host, "http://localhost:11434")
+
+        # Resposta simples
+        mock_ctx = MagicMock()
+        mock_ctx.read.return_value = json.dumps({"message": {"content": "Olá estudante!"}}).encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_ctx
+        result = client.respond([{"role": "user", "content": "Olá"}], complex_task=False)
+        self.assertEqual(result, {"response": "Olá estudante!", "subtasks": []})
+
+        # Resposta com tarefa complexa (JSON)
+        mock_ctx.read.return_value = json.dumps({
+            "message": {"content": json.dumps({"response": "Plano de estudo", "subtasks": ["Passo 1", "Passo 2"]})}
+        }).encode("utf-8")
+        result = client.respond([{"role": "user", "content": "Como estudar?"}], complex_task=True)
+        self.assertEqual(result["response"], "Plano de estudo")
+        self.assertEqual(result["subtasks"], ["Passo 1", "Passo 2"])
+
+    def test_ollama_client_availability_and_host_format(self):
+        client = OllamaClient(host="localhost:11434")
+        self.assertTrue(client.available)
+        self.assertEqual(client.host, "http://localhost:11434")
+
+        empty_client = OllamaClient(host="")
+        self.assertFalse(empty_client.available)
+        with self.assertRaises(AIUnavailable):
+            empty_client.respond([{"role": "user", "content": "teste"}])
+
+    def test_create_ai_client_factory(self):
+        with patch.dict(os.environ, {"ESTUDA_AI_PROVIDER": "ollama"}):
+            client = create_ai_client()
+            self.assertIsInstance(client, OllamaClient)
+
+        with patch.dict(os.environ, {"ESTUDA_AI_PROVIDER": "openai", "OPENAI_API_KEY": "test-key"}):
+            client = create_ai_client()
+            self.assertIsInstance(client, OpenAIResponsesClient)
+
+        with patch.dict(os.environ, {"ESTUDA_AI_PROVIDER": "gemini", "GEMINI_API_KEY": "test-key"}):
+            client = create_ai_client()
+            self.assertIsInstance(client, GeminiClient)
+
+        with patch.dict(os.environ, {"ESTUDA_AI_PROVIDER": "invalido"}):
+            with self.assertRaises(ValueError):
+                create_ai_client()
 
 
 if __name__ == "__main__":

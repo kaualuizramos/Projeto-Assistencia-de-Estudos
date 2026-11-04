@@ -1,17 +1,65 @@
-"""Integração isolada com o endpoint Responses API da OpenAI."""
+"""Integração isolada com provedores de IA (Gemini, OpenAI e Ollama)."""
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import time
 import urllib.error
 import urllib.request
+from typing import Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 
 class AIUnavailable(RuntimeError):
     pass
+
+
+@runtime_checkable
+class AIClient(Protocol):
+    @property
+    def available(self) -> bool:
+        ...
+
+    def respond(self, messages: list[dict[str, str]], complex_task: bool = False) -> dict:
+        ...
+
+
+SYSTEM_INSTRUCTION = (
+    "Você é um assistente de estudos. Responda em português, de forma acolhedora, objetiva "
+    "e educativa. Ajude o estudante a escolher próximos passos concretos."
+)
+COMPLEX_TASK_SUFFIX = " Para a última solicitação, sugira no máximo cinco subtarefas curtas e concretas."
+
+
+def _parse_and_validate_suggestions(output_text: str) -> dict:
+    cleaned = output_text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+    try:
+        result = json.loads(cleaned)
+    except ValueError as exc:
+        raise AIUnavailable("O serviço de IA retornou uma resposta inválida.") from exc
+
+    subtasks = result.get("subtasks") if isinstance(result, dict) else None
+    response_text = result.get("response") if isinstance(result, dict) else None
+    if (
+        not isinstance(response_text, str)
+        or not response_text.strip()
+        or not isinstance(subtasks, list)
+        or len(subtasks) > 5
+        or any(not isinstance(item, str) or not item.strip() or len(item.strip()) > 120 for item in subtasks)
+    ):
+        raise AIUnavailable("O serviço de IA retornou uma resposta fora do formato esperado.")
+    return {"response": response_text.strip(), "subtasks": [item.strip() for item in subtasks]}
 
 
 class OpenAIResponsesClient:
@@ -30,14 +78,10 @@ class OpenAIResponsesClient:
         payload: dict = {
             "model": self.model,
             "store": False,
-            "instructions": (
-                "Você é um assistente de estudos. Responda em português, de forma acolhedora, objetiva "
-                "e educativa. Ajude o estudante a escolher próximos passos concretos."
-            ),
+            "instructions": SYSTEM_INSTRUCTION + (COMPLEX_TASK_SUFFIX if complex_task else ""),
             "input": messages[-20:],
         }
         if complex_task:
-            payload["instructions"] += " Para a última solicitação, sugira no máximo cinco subtarefas curtas e concretas."
             payload["text"] = {
                 "format": {
                     "type": "json_schema",
@@ -70,16 +114,7 @@ class OpenAIResponsesClient:
             raise AIUnavailable("O serviço de IA retornou uma resposta vazia.")
         if not complex_task:
             return {"response": output_text, "subtasks": []}
-        try:
-            result = json.loads(output_text)
-        except ValueError as exc:
-            raise AIUnavailable("O serviço de IA retornou uma resposta inválida.") from exc
-        subtasks = result.get("subtasks") if isinstance(result, dict) else None
-        response_text = result.get("response") if isinstance(result, dict) else None
-        if (not isinstance(response_text, str) or not response_text.strip() or not isinstance(subtasks, list)
-                or len(subtasks) > 5 or any(not isinstance(item, str) or not item.strip() or len(item.strip()) > 120 for item in subtasks)):
-            raise AIUnavailable("O serviço de IA retornou uma resposta fora do formato esperado.")
-        return {"response": response_text.strip(), "subtasks": [item.strip() for item in subtasks]}
+        return _parse_and_validate_suggestions(output_text)
 
     @staticmethod
     def _extract_text(body: dict) -> str:
@@ -119,12 +154,9 @@ class GeminiClient:
                 contents.append({"role": role, "parts": [{"text": content}]})
 
         generation_config: dict = {"temperature": 0.7}
-        system_instruction = (
-            "Você é um assistente de estudos. Responda em português, de forma acolhedora, objetiva "
-            "e educativa. Ajude o estudante a escolher próximos passos concretos."
-        )
+        system_instruction = SYSTEM_INSTRUCTION
         if complex_task:
-            system_instruction += " Para a última solicitação, sugira no máximo cinco subtarefas curtas e concretas."
+            system_instruction += COMPLEX_TASK_SUFFIX
             generation_config.update({
                 "responseMimeType": "application/json",
                 "responseSchema": {
@@ -157,7 +189,6 @@ class GeminiClient:
                 if exc.code == 503 and attempt < 2:
                     time.sleep((2 ** attempt) + random.uniform(0, 0.25))
                     continue
-                # Informa status e próximo passo sem exibir o corpo da resposta nem a chave.
                 hints = {
                     400: "Confira se GEMINI_API_KEY é uma chave da Gemini API e se o modelo está correto.",
                     401: "A chave Gemini foi recusada. Gere outra no Google AI Studio e atualize a configuração.",
@@ -188,31 +219,115 @@ class GeminiClient:
             raise AIUnavailable("O serviço de IA retornou uma resposta vazia.")
         if not complex_task:
             return {"response": output_text.strip(), "subtasks": []}
+        return _parse_and_validate_suggestions(output_text)
+
+
+class OllamaClient:
+    """Cliente REST para o Ollama local (/api/chat), sem dependências adicionais."""
+
+    def __init__(self, host: str | None = None, model: str | None = None, timeout: int = 60):
+        raw_host = host if host is not None else os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        self.host = raw_host.strip()
+        if self.host and not self.host.startswith(("http://", "https://")):
+            self.host = f"http://{self.host}"
+        self.model = model or os.getenv("ESTUDA_AI_MODEL", "llama3.2")
+        self.timeout = timeout
+
+    @property
+    def available(self) -> bool:
+        return bool(self.host.strip())
+
+    def respond(self, messages: list[dict[str, str]], complex_task: bool = False) -> dict:
+        if not self.available:
+            raise AIUnavailable("Assistente indisponível: configure OLLAMA_HOST no ambiente.")
+
+        system_instruction = SYSTEM_INSTRUCTION
+        if complex_task:
+            system_instruction += COMPLEX_TASK_SUFFIX + (
+                ' Responda estritamente em formato JSON contendo as chaves "response" (texto explicativo) '
+                'e "subtasks" (lista com no máximo 5 subtarefas curtas).'
+            )
+
+        payload_messages = [{"role": "system", "content": system_instruction}]
+        for msg in messages[-20:]:
+            role = "assistant" if msg.get("role") == "assistant" else "user"
+            content = msg.get("content", "")
+            if isinstance(content, str) and content.strip():
+                payload_messages.append({"role": role, "content": content})
+
+        payload: dict = {
+            "model": self.model,
+            "messages": payload_messages,
+            "stream": False,
+            "options": {"temperature": 0.7},
+        }
+        if complex_task:
+            payload["format"] = "json"
+
+        endpoint = f"{self.host.rstrip('/')}/api/chat"
+        request = urllib.request.Request(
+            endpoint,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
-            result = json.loads(output_text)
-        except ValueError as exc:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                raise AIUnavailable(f"Modelo '{self.model}' não encontrado no Ollama. Execute 'ollama pull {self.model}'.") from exc
+            raise AIUnavailable(f"Ollama respondeu HTTP {exc.code}.") from exc
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            raise AIUnavailable(f"Não foi possível conectar ao Ollama em {self.host}. Verifique se o serviço está ativo.") from exc
+
+        try:
+            output_text = body.get("message", {}).get("content", "")
+        except (AttributeError, TypeError) as exc:
             raise AIUnavailable("O serviço de IA retornou uma resposta inválida.") from exc
-        response_text = result.get("response") if isinstance(result, dict) else None
-        subtasks = result.get("subtasks") if isinstance(result, dict) else None
-        if (not isinstance(response_text, str) or not response_text.strip() or not isinstance(subtasks, list)
-                or len(subtasks) > 5 or any(not isinstance(item, str) or not item.strip() or len(item.strip()) > 120 for item in subtasks)):
-            raise AIUnavailable("O serviço de IA retornou uma resposta fora do formato esperado.")
-        return {"response": response_text.strip(), "subtasks": [item.strip() for item in subtasks]}
+
+        if not isinstance(output_text, str) or not output_text.strip():
+            raise AIUnavailable("O serviço de IA retornou uma resposta vazia.")
+
+        if not complex_task:
+            return {"response": output_text.strip(), "subtasks": []}
+        return _parse_and_validate_suggestions(output_text)
 
 
-def create_ai_client():
-    """Escolhe Gemini por padrão; permite OpenAI quando selecionado e configurado."""
+def _is_ollama_online(host: str = "http://localhost:11434", timeout: float = 0.5) -> bool:
+    try:
+        req = urllib.request.Request(f"{host.rstrip('/')}/api/tags", headers={"User-Agent": "EstudaApp"})
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
+def create_ai_client() -> AIClient:
+    """Cria o cliente de IA configurado por variáveis de ambiente ou auto-detecta Ollama local."""
     provider = os.getenv("ESTUDA_AI_PROVIDER", "").strip().casefold()
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
-    # A chave Gemini do protótipo prevalece sobre variáveis OpenAI antigas no ambiente.
-    if gemini_key and not (provider == "openai" and openai_key):
-        return GeminiClient()
-    if not provider:
-        provider = "gemini"
-    if provider == "gemini":
-        return GeminiClient()
-    if provider == "openai":
-        return OpenAIResponsesClient()
-    raise ValueError("ESTUDA_AI_PROVIDER deve ser 'openai' ou 'gemini'.")
 
+    client: AIClient
+    if provider == "ollama":
+        client = OllamaClient()
+    elif provider == "openai":
+        client = OpenAIResponsesClient()
+    elif provider == "gemini":
+        client = GeminiClient()
+    elif not provider:
+        # Sem provedor explícito: verifica chaves de API ou auto-detecta Ollama ativo
+        if gemini_key:
+            client = GeminiClient()
+        elif openai_key:
+            client = OpenAIResponsesClient()
+        elif os.getenv("OLLAMA_HOST") or _is_ollama_online():
+            client = OllamaClient()
+        else:
+            client = GeminiClient()
+    else:
+        raise ValueError("ESTUDA_AI_PROVIDER deve ser 'gemini', 'openai' ou 'ollama'.")
+
+    logger.info("Cliente de IA selecionado: %s (modelo=%s)", client.__class__.__name__, getattr(client, "model", "padrão"))
+    return client

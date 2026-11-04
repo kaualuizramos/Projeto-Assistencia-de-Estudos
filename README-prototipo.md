@@ -38,11 +38,17 @@ O restante do aplicativo continua funcionando sem as integrações. Sem credenci
 - Defina `OPENAI_API_KEY` com sua chave da plataforma OpenAI.
 - Opcionalmente, defina `ESTUDA_AI_MODEL` (padrão: `gpt-4o-mini`).
 
-No PyCharm, abra **Run > Edit Configurations...**, selecione a configuração de `app.py` e adicione as variáveis em **Environment variables**. Exemplo Gemini: `ESTUDA_AI_PROVIDER=gemini;GEMINI_API_KEY=sua-chave`. Salve e reinicie o aplicativo. Cada provedor requer sua própria chave e limites/cobrança são definidos pelo fornecedor.
+### Ollama (Local)
+
+- Defina `ESTUDA_AI_PROVIDER=ollama`. Não necessita de chave de API externa nem envio de dados para servidores de terceiros.
+- Opcionalmente, defina `OLLAMA_HOST` (padrão: `http://localhost:11434`).
+- Opcionalmente, defina `ESTUDA_AI_MODEL` (padrão: `llama3.2`).
+
+No PyCharm, abra **Run > Edit Configurations...**, selecione a configuração de `app.py` e adicione as variáveis em **Environment variables**. Exemplo Gemini: `ESTUDA_AI_PROVIDER=gemini;GEMINI_API_KEY=sua-chave`. Exemplo Ollama: `ESTUDA_AI_PROVIDER=ollama`. Salve e reinicie o aplicativo. Provedores em nuvem requerem sua própria chave e limites/cobrança são definidos pelo fornecedor.
 
 Para e-mail, defina as variáveis de ambiente `ESTUDA_SMTP_HOST`, `ESTUDA_SMTP_PORT` (padrão 587), `ESTUDA_SMTP_USER`, `ESTUDA_SMTP_PASSWORD`, `ESTUDA_SMTP_FROM` e, quando o provedor exigir TLS implícito, `ESTUDA_SMTP_SSL=true`. O aplicativo exige STARTTLS ou TLS implícito para a conexão SMTP.
 
-O chat envia somente os últimos 20 conteúdos de mensagem necessários à conversa; remove o nome e o e-mail cadastrados, endereços de e-mail detectáveis e credenciais escritas em formatos comuns. As requisições são feitas por HTTPS e não solicitam armazenamento da resposta pelo provedor. Evite inserir dados pessoais desnecessários no chat.
+O chat envia somente os últimos 20 conteúdos de mensagem necessários à conversa; remove o nome e o e-mail cadastrados, endereços de e-mail detectáveis e credenciais escritas em formatos comuns. As requisições são feitas por HTTPS (ou HTTP local no caso do Ollama) e não solicitam armazenamento da resposta pelo provedor. Evite inserir dados pessoais desnecessários no chat.
 
 Para conceder o perfil administrador antes de criar a conta, defina `ESTUDA_ADMIN_EMAIL` com o e-mail que será usado no cadastro. A primeira conta com esse e-mail recebe os controles de habilitar/desabilitar o assistente e definir o limite diário. Não deixe essa variável configurada num computador compartilhado.
 

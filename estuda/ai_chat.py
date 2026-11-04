@@ -7,7 +7,7 @@ import re
 
 from estuda.authentication import AuthenticationService
 from estuda.database import Database
-from estuda.integrations.ai import AIUnavailable, OpenAIResponsesClient
+from estuda.integrations.ai import AIClient, AIUnavailable, OpenAIResponsesClient
 from estuda.tasks import TasksService
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class ChatError(ValueError):
 
 
 class AIChatService:
-    def __init__(self, database: Database, client: OpenAIResponsesClient,
+    def __init__(self, database: Database, client: AIClient | OpenAIResponsesClient,
                  auth: AuthenticationService, tasks: TasksService):
         self.database, self.client, self.auth, self.tasks = database, client, auth, tasks
 
@@ -119,6 +119,8 @@ class AIChatService:
                 db.execute("UPDATE messages SET status='Failed' WHERE id=?", (message_id,))
             if self.client.__class__.__name__ == "GeminiClient":
                 raise AIUnavailable("Assistente indisponível: configure GEMINI_API_KEY no ambiente.")
+            if self.client.__class__.__name__ == "OllamaClient":
+                raise AIUnavailable("Assistente indisponível: configure OLLAMA_HOST no ambiente.")
             raise AIUnavailable("Assistente indisponível: configure OPENAI_API_KEY no ambiente.")
         with self.database.connection() as db:
             self._owned_conversation(db, user["id"], conversation_id)
@@ -174,4 +176,3 @@ class AIChatService:
             cursor = db.execute("UPDATE suggestions SET status='Rejected' WHERE id=? AND user_id=? AND status='Proposed'", (suggestion_id, user_id))
             if cursor.rowcount != 1:
                 raise ChatError("Proposta não encontrada ou já resolvida.")
-
