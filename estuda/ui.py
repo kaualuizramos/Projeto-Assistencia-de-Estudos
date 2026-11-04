@@ -979,9 +979,10 @@ class StudyWindow(QMainWindow):
         self.chat_log.verticalScrollBar().setValue(self.chat_log.verticalScrollBar().maximum())
         failed = [row for row in rows if row["role"] == "user" and row["status"] == "Failed"]
         self._failed_rows = failed
+        positions = {row["id"]: position for position, row in enumerate(rows, start=1)}
         self.failed_messages.clear()
         for row in failed:
-            self.failed_messages.addItem(f"{row['content'][:75]}  ·  #{row['id']}", row["id"])
+            self.failed_messages.addItem(f"{row['content'][:75]}  ·  #{positions[row['id']]}", row["id"])
         self.retry_card.setVisible(bool(failed))
 
     def _load_suggestions(self):
