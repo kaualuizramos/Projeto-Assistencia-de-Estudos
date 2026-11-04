@@ -848,7 +848,11 @@ class StudyWindow(QMainWindow):
         intro.addWidget(self.new_conversation_button)
         layout.addLayout(intro)
 
-        provider_name = "Gemini" if self.ai_client.__class__.__name__ == "GeminiClient" else "OpenAI"
+        provider_name = {
+            "GeminiClient": "Gemini",
+            "OpenAIClient": "OpenAI",
+            "OllamaClient": "Ollama"
+        }.get(self.ai_client.__class__.__name__, "Unknown")
         if getattr(self.ai_client, "available", False):
             connection_text = f"●  {provider_name} configurada"
             connection_role = "chatReady"
