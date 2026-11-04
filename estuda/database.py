@@ -20,6 +20,14 @@ class Database:
         self._memory_uri = f"file:estuda-{uuid.uuid4().hex}?mode=memory&cache=shared" if self._memory else None
         self._keeper = sqlite3.connect(self._memory_uri, uri=True, check_same_thread=False) if self._memory else None
 
+    def close(self) -> None:
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
+    def __del__(self) -> None:
+        self.close()
+
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
         if self._memory:
@@ -190,4 +198,3 @@ class Database:
                 continue
             if local_value.tzinfo is None:
                 db.execute("UPDATE tasks SET deadline=? WHERE id=?", (local_value.astimezone(timezone.utc).isoformat(), row["id"]))
-

@@ -62,6 +62,9 @@ class ServiceCase(unittest.TestCase):
         self.user_id = self.auth.register("Maria estudante", "maria@example.test", "senha-super-segura")
         self.user = self.auth.login("maria@example.test", "senha-super-segura")
 
+    def tearDown(self):
+        self.db.close()
+
     def test_registration_login_and_scrypt_storage(self):
         with self.db.connection() as db:
             row = db.execute("SELECT password_algorithm,password_hash FROM users WHERE id=?", (self.user_id,)).fetchone()
@@ -278,6 +281,7 @@ class MigrationAndAdapterTests(unittest.TestCase):
             self.assertEqual(conn.execute("SELECT password_algorithm FROM users WHERE id=1").fetchone()[0], "scrypt")
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM messages WHERE conversation_id IS NOT NULL").fetchone()[0], 1)
             self.assertTrue(conn.execute("SELECT deadline FROM tasks").fetchone()[0].endswith("+00:00"))
+        db.close()
 
     def test_openai_output_extraction_and_api_key_configuration(self):
         client = OpenAIResponsesClient(api_key="test-secret", model="test-model")
