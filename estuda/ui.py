@@ -946,8 +946,9 @@ class StudyWindow(QMainWindow):
             self.active_conversation_id = ids[0]
         self._conversation_rows = rows
         self.conversation_box.blockSignals(True); self.conversation_box.clear()
+        convo_numbers = {row["id"]: idx + 1 for idx, row in enumerate(sorted(rows, key=lambda r: r["id"]))}
         for row in rows:
-            self.conversation_box.addItem(f"{row['title']}  ·  #{row['id']}", row["id"])
+            self.conversation_box.addItem(f"{row['title']}  ·  #{convo_numbers[row['id']]}", row["id"])
         index = self.conversation_box.findData(self.active_conversation_id)
         self.conversation_box.setCurrentIndex(index); self.conversation_box.blockSignals(False)
         self._load_messages(); self._load_suggestions()
@@ -1025,7 +1026,7 @@ class StudyWindow(QMainWindow):
     def _chat_succeeded(self, _result, conversation_id):
         if self.active_conversation_id == conversation_id:
             self._load_messages(); self._load_suggestions()
-            self._set_chat_status("Resposta recebida. Pode continuar a conversa.", "chatReady")
+            self._set_chat_status("Resposta recebida.", "chatReady")
         self._refresh_dashboard()
 
     def _chat_failed(self, message, conversation_id, content, message_id, previous_message_id):
@@ -1164,8 +1165,8 @@ class StudyWindow(QMainWindow):
         layout.addWidget(profile)
         privacy, privacy_layout = self._card("Seus dados")
         policy = ("Nome, e-mail, tarefas, mensagens e sessões ficam no banco local deste computador. "
-                  "Quando configurado, o texto do chat (com nome e e-mail identificáveis removidos) é enviado ao provedor de IA. "
-                  "O e-mail só é enviado para recuperação de conta ou lembretes explicitamente ativados.")
+                  "\nQuando configurado, o texto do chat (com nome e e-mail identificáveis removidos) é enviado ao provedor de IA. "
+                  "\nO e-mail só é enviado para recuperação de conta ou lembretes explicitamente ativados.")
         privacy_layout.addWidget(self._label(policy, "subtitle")); layout.addWidget(privacy)
         layout.addWidget(self._button("Excluir minha conta…", self._delete_account, "danger"), alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addStretch(1)
