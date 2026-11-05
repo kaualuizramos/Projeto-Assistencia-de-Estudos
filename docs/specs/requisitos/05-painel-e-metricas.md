@@ -1,5 +1,5 @@
 # 1.5 Dashboard & Metrics
 
-- **RF30:** WHEN the user accesses the progress dashboard, the System SHALL display the number of completed tasks, pending tasks that are not overdue, and overdue tasks.
-- **RF31:** The System SHALL display the number of focus sessions with status "Completed" and the total effective duration of all finished sessions ("Completed" or "Terminated"), for the period selected by the user (last 7 days, last 30 days, or all time).
-- **RF33:** The System SHALL allow the user to view their task history and focus-session history.
+- **RF30:** WHEN the user accesses the progress dashboard, the System SHALL display the number of completed tasks, pending tasks that are not overdue, and overdue tasks, regardless of the selected period, and a list of the nearest pending tasks ordered by deadline.
+- **RF31:** The System SHALL display the number of focus sessions with status "Completed" and the total effective duration of all finished sessions ("Completed" or "Terminated"), for the period selected by the user (last 7 days, last 30 days, or all time; default last 30 days), considering the start time of each session.
+- **RF33:** The System SHALL allow the user to view their task history and focus-session history in a history screen with the same period selection. The task history lists the pending tasks and the tasks completed within the period, with status, deadline, and completion date; the focus-session history lists the sessions started within the period, with task, status, start time, and effective duration.

@@ -1,9 +1,9 @@
 # Non-Functional Requirements — Security
 
-- **RNF104:** The System MUST store user passwords only as salted hashes produced by Argon2id, bcrypt, or scrypt, and MUST NOT store them in plain text.
+- **RNF104:** The System MUST store user passwords only as salted hashes produced by Argon2id, bcrypt, or scrypt, and MUST NOT store them in plain text. The implementation uses scrypt (N=2^14, r=8, p=1) with a random 16-byte salt per password, for new accounts and password resets. Hashes PBKDF2-SHA256 created by the first prototype are accepted only to validate a login and are replaced by scrypt upon successful authentication. See ADR 0007.
 - **RNF105:** The System MUST NOT store user passwords in plain text.
-- **RNF106:** The System SHALL use HTTPS for all communication between the client and backend services.
-- **RNF107:** The System SHALL validate and sanitize all user-provided input before processing or storing it.
-- **RNF108:** The System SHALL implement rate limiting on authentication endpoints.
-- **RNF109:** WHILE a user session is active, the System SHALL enforce authorization rules for every protected resource request.
-- **RNF124:** The System MUST NOT expose external AI API keys or other service credentials in client-side code.
+- **RNF106:** The System SHALL use encrypted transport for all communication with external services: HTTPS for the Gemini and OpenAI APIs, and STARTTLS or implicit TLS for SMTP. Communication with a local Ollama instance uses HTTP on the local machine by default (`http://localhost:11434`). The password-recovery callback listens only on the loopback address (127.0.0.1).
+- **RNF107:** The System SHALL validate and sanitize all user-provided input before processing or storing it: length, format, and allowed-value checks in the service modules, parameterized SQL queries, and escaping of the chat text before it is displayed.
+- **RNF108:** The System SHALL implement rate limiting on login: after 5 failed attempts within 15 minutes for the same e-mail address, the System SHALL reject further attempts for that address, with the same generic error message, for 15 minutes.
+- **RNF109:** WHILE a user session is active, the System SHALL enforce authorization rules for every operation on a protected resource: each service operation filters or verifies ownership by the authenticated user's identifier, and the assistant settings can be changed only by the Administrator profile.
+- **RNF124:** The System MUST NOT expose external AI API keys or other service credentials in source code, in the database, or in logs: they are read only from environment variables (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ESTUDA_SMTP_*`). See ADR 0006. Because this is a desktop application, the keys remain accessible to anyone who controls the environment where it runs.

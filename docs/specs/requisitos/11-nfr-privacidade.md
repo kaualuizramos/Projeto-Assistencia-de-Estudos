@@ -1,4 +1,4 @@
 # Non-Functional Requirements — Privacy
 
-- **RNF110:** The System SHALL process personal data according to applicable data-protection legislation, including the Brazilian LGPD.
-- **RNF111:** The System MUST NOT expose personal user data to other users without explicit authorization.
+- **RNF110:** The System SHALL process personal data according to applicable data-protection legislation, including the Brazilian LGPD. Measures adopted: data is stored only in the local database on the user's computer; the account screen informs what is stored and what is sent to external services; the content sent to the AI provider is limited and sanitized (RF14, RF17); e-mail is sent only for password recovery and for reminders explicitly enabled by the user (RF34, RF45); and the user can permanently delete the account and its data (RF36). Full legal compliance has not been certified.
+- **RNF111:** The System MUST NOT expose personal user data to other users without explicit authorization. Data of each account is isolated by ownership checks in every service operation (RF37). The local database file is not encrypted, so protection against someone with access to the files of the computer is outside the scope of this requirement.
